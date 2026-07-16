@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseJa, parseJc, parseJe, parseJn, parseJo, parseJp, parseJs } from "../www/src/api/client";
 
-const base = ( process.env.OS_DEMO_BASE ?? "" ).replace( /\/?$/, "/" );
-const authBase = ( process.env.OS_DEMO_AUTH_BASE ?? "" ).replace( /\/?$/, "/" );
+const base = process.env.OS_DEMO_BASE?.replace( /\/?$/, "/" ) ?? "";
+const authBase = process.env.OS_DEMO_AUTH_BASE?.replace( /\/?$/, "/" ) ?? "";
 const firmwareRoot = process.env.FIRMWARE_ROOT ?? "";
 
 async function jsonAt( root: string, path: string ): Promise<unknown> {
