@@ -152,6 +152,10 @@ Do not expose WaterBudget until a separate decision funds all of: an additive We
 - Add an Axis-A request-side method-ID check and test the final flat encoding, RainDelay, reserved `scales`, and the combined explanation-pressure case—not only `convertToLegacyFormat`.
 - Add an Axis-D contract job that starts the retained firmware DEMO/native surface and runs the App parsers against `/jo`, `/jc`, `/jn`, `/je`, `/jp`, `/js`, `/ja`, mutations, and failed `/jo`/`/ja`. Keep a sanitized live `2214` corpus separate from curated fixtures. `/jn` supplies the special bit; `/je` supplies the type and definition needed for safe type-aware copy (`OpenSprinkler-Firmware/opensprinkler_server.cpp:450-516`).
 - Pin the intended OTF fork revision in the plan and verify both ESP8266 and retained DEMO against the same revision before changing dependency files.
+- **Phase 0 revision record (2026-07-16):**
+  - Intended review candidate: `kars85/OpenThings-Framework-Firmware-Library@75fe760187ac932e56876e1954540089686d6082` (`library.json` version `0.2.1`), verified against the fork's `origin/master`.
+  - Current split remains unchanged: native DEMO/Linux consumes upstream gitlink `4e93061538da197e1820c7b325a3c996ff7851ea`; ESP8266 uses the mutable upstream PlatformIO constraint `^0.2.0`.
+  - Phase 4 must build both against the recorded candidate before replacing either path with one exact pin.
 - Reproduce the handoff's recorded Vite output in clean CI, record JS plus the 3,319-byte gzipped CSS baseline, and reject an unexplained >10% regression (`OpenSprinkler-App/docs/DESIGN-HANDOFF.md:52-62`).
 
 **Acceptance criteria:**
