@@ -84,7 +84,24 @@ jobs:
       - name: Build UI
         run: npx grunt prepareFW
 
+      - name: Check for deploy credentials
+        id: deploy_creds
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_OPENSPRINKLER_UI }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+        run: |
+          if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then echo "has_sa=true" >> "$GITHUB_OUTPUT"; else echo "has_sa=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -n "$CF_ZONE_ID" ] && [ -n "$CLOUDFLARE_API_KEY" ]; then echo "has_cf=true" >> "$GITHUB_OUTPUT"; else echo "has_cf=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Require deploy credentials for release events
+        if: ${{ github.event_name != 'pull_request' && (steps.deploy_creds.outputs.has_sa != 'true' || steps.deploy_creds.outputs.has_cf != 'true') }}
+        run: |
+          echo "::error::Firebase and Cloudflare credentials are required for release deployments."
+          exit 1
+
       - name: Deploy to Firebase Hosting
+        if: ${{ steps.deploy_creds.outputs.has_sa == 'true' }}
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
@@ -99,6 +116,7 @@ jobs:
           channelId: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'live' || '' }}
 
       - name: Purge Cloudflare Cache
+        if: ${{ steps.deploy_creds.outputs.has_sa == 'true' && steps.deploy_creds.outputs.has_cf == 'true' }}
         env:
           CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
@@ -114,3 +132,7 @@ jobs:
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${CLOUDFLARE_API_KEY}" \
             --data "{\"hosts\": [\"${HOST}\"]}"
+
+      - name: Note when preview deploy credentials are absent
+        if: ${{ github.event_name == 'pull_request' && steps.deploy_creds.outputs.has_sa != 'true' }}
+        run: echo "::notice::Build passed; Firebase preview deploy skipped because its service-account secret is not configured."

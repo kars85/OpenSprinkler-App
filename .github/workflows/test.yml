@@ -86,7 +86,7 @@ jobs:
 
       - name: Build native Firmware DEMO
         working-directory: firmware
-        run: sudo ./build.sh -s demo
+        run: sudo env DEMO_HTTP_PORT=8080 ./build.sh -s demo
 
       - name: Run Axis-D success contract
         shell: bash
@@ -105,7 +105,7 @@ jobs:
 
       - name: Build auth-enabled Firmware DEMO
         working-directory: firmware
-        run: sudo env DEMO_AUTH_TEST=1 ./build.sh -s demo
+        run: sudo env DEMO_AUTH_TEST=1 DEMO_HTTP_PORT=8080 ./build.sh -s demo
 
       - name: Run Axis-D auth-failure contract
         shell: bash
