@@ -1,17 +1,19 @@
 import { readFileSync } from "node:fs";
-import { createServer } from "node:http";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseJa, parseJc, parseJe, parseJn, parseJo, parseJp, parseJs } from "../www/src/api/client";
 
 const base = ( process.env.OS_DEMO_BASE ?? "" ).replace( /\/?$/, "/" );
+const authBase = ( process.env.OS_DEMO_AUTH_BASE ?? "" ).replace( /\/?$/, "/" );
 const firmwareRoot = process.env.FIRMWARE_ROOT ?? "";
 
-async function json( path: string ): Promise<unknown> {
-	const response = await fetch( base + path, { headers: { Accept: "application/json" } } );
+async function jsonAt( root: string, path: string ): Promise<unknown> {
+	const response = await fetch( root + path, { headers: { Accept: "application/json" } } );
 	if ( !response.ok ) throw new Error( `/${ path }: HTTP ${ response.status }` );
 	return response.json();
 }
+
+const json = ( path: string ) => jsonAt( base, path );
 
 async function command( path: string ): Promise<void> {
 	expect( await json( path ) ).toMatchObject( { result: 1 } );
@@ -48,24 +50,21 @@ describe.skipIf( !base || !firmwareRoot )( "Firmware DEMO Axis-D contract", () =
 		}
 	} );
 
-	it( "pins both HTTP parser and producer auth-failure shapes", async () => {
-		const expectedFwv = parseJo( await json( "jo" ) ).fwv;
-		const failureHarness = createServer( ( _request, response ) => {
-			response.writeHead( 200, { "content-type": "application/json" } );
-			response.end( JSON.stringify( { fwv: expectedFwv } ) );
-		} );
-		await new Promise<void>( ( resolve, reject ) => failureHarness.listen( 0, "127.0.0.1", resolve ).once( "error", reject ) );
-		try {
-			const port = ( failureHarness.address() as { port: number } ).port;
-			const [ joResponse, jaResponse ] = await Promise.all( [
-				fetch( `http://127.0.0.1:${ port }/jo?pw=wrong` ),
-				fetch( `http://127.0.0.1:${ port }/ja?pw=wrong` ),
-			] );
-			expect( parseJo( await joResponse.json() ) ).toEqual( { fwv: expectedFwv } );
-			expect( parseJa( await jaResponse.json() ) ).toEqual( { fwv: expectedFwv } );
-		} finally {
-			await new Promise<void>( ( resolve ) => failureHarness.close( () => resolve() ) );
-		}
+} );
+
+describe.skipIf( !authBase || !firmwareRoot )( "Firmware auth-enabled DEMO contract", () => {
+	it( "returns the real fwv-only failure shape for /jo and /ja", async () => {
+		const [ joResponse, jaResponse ] = await Promise.all( [
+			fetch( authBase + "jo?pw=wrong", { headers: { Accept: "application/json" } } ),
+			fetch( authBase + "ja?pw=wrong", { headers: { Accept: "application/json" } } ),
+		] );
+		expect( joResponse.status ).toBe( 200 );
+		expect( jaResponse.status ).toBe( 200 );
+		expect( joResponse.headers.get( "content-type" ) ).toContain( "application/json" );
+		expect( jaResponse.headers.get( "content-type" ) ).toContain( "application/json" );
+		expect( parseJo( await joResponse.json() ) ).toEqual( { fwv: 221 } );
+		expect( parseJa( await jaResponse.json() ) ).toEqual( { fwv: 221 } );
+
 		const source = readFileSync( join( firmwareRoot, "opensprinkler_server.cpp" ), "utf8" );
 		const header = source.slice( source.indexOf( "void print_header(OTF_PARAMS_DEF" ), source.indexOf( "#else", source.indexOf( "void print_header(OTF_PARAMS_DEF" ) ) );
 		expect( header ).toContain( 'res.writeStatus(200, F("OK"));' );
