@@ -21,35 +21,38 @@ describe( "md5 (RFC 1321 test vectors)", () => {
 	} );
 } );
 
-describe( "seam.authenticate (version gating)", () => {
+describe( "seam.authenticate (modern hash-only policy)", () => {
 	afterEach( () => vi.restoreAllMocks() );
 
-	function mockSp( result: number ): typeof fetch {
-		return vi.fn( async () => ( { ok: true, status: 200, json: async () => ( { result } ) } ) as Response ) as unknown as typeof fetch;
+	function mockJo( authenticated: boolean ): typeof fetch {
+		return vi.fn( async () => ( {
+			ok: true, status: 200, statusText: "OK",
+			json: async () => authenticated ? { fwv: 221, wl: 100 } : { fwv: 221 },
+		} ) as Response ) as unknown as typeof fetch;
 	}
 
-	it( "fwv>=213: sends md5(pw) and returns the hash on success", async () => {
-		const f = mockSp( 0 ); globalThis.fetch = f;
+	it( "sends only md5(pw) to /jo and returns the hash on success", async () => {
+		const f = mockJo( true ); globalThis.fetch = f;
 		const seam = new BrowserDeviceSeam( { baseUrl: "http://d/" } );
-		const r = await seam.authenticate( "secret", 221, md5 );
+		const r = await seam.authenticate( "secret", md5 );
 		expect( r.ok ).toBe( true );
 		expect( r.pwHash ).toBe( md5( "secret" ) );
 		const url = String( ( f as unknown as { mock: { calls: unknown[][] } } ).mock.calls[ 0 ][ 0 ] );
-		expect( url ).toContain( "/sp?pw=" + md5( "secret" ) );
+		expect( url ).toBe( "http://d/jo?pw=" + md5( "secret" ) );
+		expect( url ).not.toContain( "secret" );
 	} );
 
-	it( "fwv<208: sends cleartext and returns it on success", async () => {
-		globalThis.fetch = mockSp( 0 );
+	it( "treats the firmware's fwv-only response as auth failure", async () => {
+		const f = mockJo( false );
+		globalThis.fetch = f;
 		const seam = new BrowserDeviceSeam( { baseUrl: "http://d/" } );
-		const r = await seam.authenticate( "plain", 205, md5 );
-		expect( r.ok ).toBe( true );
-		expect( r.pwHash ).toBe( "plain" );
-	} );
-
-	it( "rejects when /sp returns result > 1", async () => {
-		globalThis.fetch = mockSp( 2 );
-		const seam = new BrowserDeviceSeam( { baseUrl: "http://d/" } );
-		const r = await seam.authenticate( "wrong", 221, md5 );
+		const r = await seam.authenticate( "wrong", md5 );
 		expect( r.ok ).toBe( false );
+		expect( r.pwHash ).toBe( md5( "wrong" ) );
+		const calls = ( f as unknown as { mock: { calls: unknown[][] } } ).mock.calls;
+		expect( calls ).toHaveLength( 1 );
+		const url = String( calls[ 0 ]![ 0 ] );
+		expect( url ).toBe( "http://d/jo?pw=" + md5( "wrong" ) );
+		expect( url ).not.toMatch( /wrong|npw|cpw|\/sp/ );
 	} );
 } );

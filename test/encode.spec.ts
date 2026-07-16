@@ -120,8 +120,8 @@ describe( "station config encode (/cs)", () => {
 			groups: { 0: 255 },
 		} );
 		expect( path ).toContain( "cs?" );
-		expect( path ).toContain( "s0=Front%20Lawn".replace( "%20", "_" ) ); // fw>=208 underscores spaces
-		expect( path ).toContain( "s0=Front_Lawn" );
+		expect( path ).toContain( "s0=Front%20Lawn" );
+		expect( path ).not.toContain( "Front_Lawn" );
 		expect( path ).toContain( "m0=1" );
 		expect( path ).toContain( "i0=5" );
 		expect( path ).toContain( "g0=255" );
@@ -157,9 +157,9 @@ describe( "options encode (/co)", () => {
 	it( "escapeJsonForFirmware strips the outer braces", () => {
 		expect( escapeJsonForFirmware( { en: 1, token: "abc" } ) ).toBe( '"en":1,"token":"abc"' );
 	} );
-	it( "encodeUwt packs method + restriction bit", () => {
-		expect( encodeUwt( 1, false ) ).toBe( 1 );
-		expect( encodeUwt( 4, true ) ).toBe( 4 | 0x80 );
+	it( "encodeUwt stores only the supported method bits", () => {
+		expect( encodeUwt( 1 ) ).toBe( 1 );
+		expect( encodeUwt( 4 | 0x80 ) ).toBe( 4 );
 	} );
 	it( "ipOctets splits a dotted quad", () => {
 		expect( ipOctets( "192.168.1.100" ) ).toEqual( [ 192, 168, 1, 100 ] );

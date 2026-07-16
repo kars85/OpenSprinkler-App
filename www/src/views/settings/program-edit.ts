@@ -6,11 +6,12 @@
  */
 import type { JnResponse } from "../../api/types";
 import {
-	textField, numberField, checkboxField, selectField, toInt, type SelectOption,
+	textField, numberField, checkboxField, selectField, type SelectOption,
 } from "../../ui/form";
 import { esc, infoNote } from "../../ui/help";
 import {
-	dateToEpochDays, encodeDate, type ProgramInput, type ScheduleInput, type StartInput, type StartTimeInput,
+	dateToEpochDays, encodeDate, inputNumber, validateFirmwareString, ValidationError,
+	type ProgramInput, type ScheduleInput, type StartInput, type StartTimeInput,
 } from "../../api/encode";
 
 export type FormValues = Record<string, string | boolean >;
@@ -31,14 +32,18 @@ const START_OPTS: SelectOption[] = [
 export function parseClock( s: string ): number | null {
 	const m = /^(\d{1,2}):(\d{2})$/.exec( s.trim() );
 	if ( !m ) return null;
-	return ( parseInt( m[ 1 ]!, 10 ) * 60 + parseInt( m[ 2 ]!, 10 ) ) % 1440;
+	const hour = Number( m[ 1 ] ), minute = Number( m[ 2 ] );
+	return hour <= 23 && minute <= 59 ? hour * 60 + minute : null;
 }
 
 /** "YYYY-MM-DD" -> {year,month,day} (or null). */
 function parseDate( s: string ): { year: number; month: number; day: number } | null {
 	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec( s.trim() );
 	if ( !m ) return null;
-	return { year: +m[ 1 ]!, month: +m[ 2 ]!, day: +m[ 3 ]! };
+	const value = { year: +m[ 1 ]!, month: +m[ 2 ]!, day: +m[ 3 ]! };
+	const date = new Date( Date.UTC( value.year, value.month - 1, value.day ) );
+	return value.year >= 1970 && value.year <= 2149 && date.getUTCFullYear() === value.year &&
+		date.getUTCMonth() === value.month - 1 && date.getUTCDate() === value.day ? value : null;
 }
 
 export function renderProgramEditor( jn: JnResponse, fwv = 0 ): string {
@@ -52,7 +57,7 @@ export function renderProgramEditor( jn: JnResponse, fwv = 0 ): string {
 		infoNote( "Define a watering schedule. Saved to the device via /cp." ) +
 		`<form class="settings" data-settings="program" data-count="${ jn.snames.length }">` +
 		textField( "name", "Program name", "", { placeholder: "e.g. Morning" } ) +
-		checkboxField( "enabled", "Enabled", true ) +
+		checkboxField( "enabled", "Enabled", false ) +
 		checkboxField( "useWeather", "Use weather adjustment", true ) +
 		selectField( "restriction", "Day restriction", REST_OPTS, "none" ) +
 		selectField( "schedType", "Schedule", TYPE_OPTS, "weekly" ) +
@@ -83,45 +88,65 @@ export function renderProgramEditor( jn: JnResponse, fwv = 0 ): string {
 
 function buildSchedule( v: FormValues ): ScheduleInput {
 	switch ( String( v.schedType ) ) {
-		case "interval":
-			return { type: "interval", intervalDays: toInt( v.intervalDays, 2 ), startingInDays: toInt( v.startingInDays, 0 ) };
+		case "interval": {
+			const intervalDays = inputNumber( v.intervalDays, "intervalDays", 1, 128 );
+			const startingInDays = inputNumber( v.startingInDays, "startingInDays", 0, 127 );
+			if ( startingInDays >= intervalDays ) throw new ValidationError( "startingInDays", "Starting day must be less than the interval." );
+			return { type: "interval", intervalDays, startingInDays };
+		}
 		case "monthly":
-			return { type: "monthly", dayOfMonth: toInt( v.dayOfMonth, 1 ) };
+			return { type: "monthly", dayOfMonth: inputNumber( v.dayOfMonth, "dayOfMonth", 0, 31 ) };
 		case "singlerun": {
 			const d = parseDate( String( v.singleDate ?? "" ) );
-			return { type: "singlerun", epochDays: d ? dateToEpochDays( d.year, d.month, d.day ) : 0 };
+			if ( !d ) throw new ValidationError( "singleDate", "Enter a valid date." );
+			const epochDays = dateToEpochDays( d.year, d.month, d.day );
+			if ( epochDays > 65535 ) throw new ValidationError( "singleDate", "Date is outside the controller's supported range." );
+			return { type: "singlerun", epochDays };
 		}
 		default: {
 			const weekdays: number[] = [];
 			for ( let i = 0; i < 7; i++ ) if ( v[ `wd_${ i }` ] ) weekdays.push( i );
+			if ( weekdays.length === 0 ) throw new ValidationError( "wd_0", "Select at least one weekday." );
 			return { type: "weekly", weekdays };
 		}
 	}
 }
 
-function startTimeFromClock( s: string ): StartTimeInput {
+function startTimeFromClock( s: string, field: string, required = false ): StartTimeInput {
+	if ( s.trim() === "" && !required ) return { kind: "off" };
 	const m = parseClock( s );
-	return m === null ? { kind: "off" } : { kind: "time", minutes: m };
+	if ( m === null ) throw new ValidationError( field, "Enter a valid 24-hour time (HH:MM)." );
+	return { kind: "time", minutes: m };
 }
 
 function buildStart( v: FormValues ): StartInput {
 	if ( String( v.startType ) === "repeat" ) {
 		return {
 			type: "repeat",
-			first: startTimeFromClock( String( v.repeatFirst ?? "" ) ),
-			count: toInt( v.repeatCount, 1 ),
-			intervalMinutes: toInt( v.repeatInterval, 60 ),
+			first: startTimeFromClock( String( v.repeatFirst ?? "" ), "repeatFirst", true ),
+			count: inputNumber( v.repeatCount, "repeatCount", 1, 255 ),
+			intervalMinutes: inputNumber( v.repeatInterval, "repeatInterval", 1, 1440 ),
 		};
 	}
-	const times = [ 0, 1, 2, 3 ].map( ( i ) => startTimeFromClock( String( v[ `t_${ i }` ] ?? "" ) ) );
+	const times = [ 0, 1, 2, 3 ].map( ( i ) => startTimeFromClock( String( v[ `t_${ i }` ] ?? "" ), `t_${ i }` ) );
+	if ( times.every( ( time ) => time.kind === "off" ) ) throw new ValidationError( "t_0", "Enter at least one start time." );
+	const used = times.filter( ( time ): time is Extract<StartTimeInput, { kind: "time" }> => time.kind === "time" ).map( ( time ) => time.minutes );
+	if ( new Set( used ).size !== used.length ) throw new ValidationError( "t_0", "Start times must be unique." );
 	return { type: "fixed", times };
 }
 
 /** Map read form values -> ProgramInput. `count` = number of stations (for the durations array). */
 export function buildProgramInput( v: FormValues, count: number ): ProgramInput {
 	const durations: number[] = [];
-	for ( let sid = 0; sid < count; sid++ ) durations.push( toInt( v[ `dur_${ sid }` ], 0 ) * 60 );
+	for ( let sid = 0; sid < count; sid++ ) {
+		const seconds = inputNumber( v[ `dur_${ sid }` ], `dur_${ sid }`, 0, 1080, false ) * 60;
+		if ( !Number.isInteger( seconds ) ) throw new ValidationError( `dur_${ sid }`, "Duration must resolve to whole seconds." );
+		durations.push( seconds );
+	}
+	if ( durations.every( ( duration ) => duration === 0 ) ) throw new ValidationError( "dur_0", "Enter a run time for at least one station." );
 	const rest = String( v.restriction ?? "none" );
+	const name = typeof v.name === "string" ? v.name : "";
+	if ( name.trim() === "" ) throw new ValidationError( "name", "Enter a program name." );
 	const input: ProgramInput = {
 		enabled: !!v.enabled,
 		useWeather: !!v.useWeather,
@@ -129,10 +154,11 @@ export function buildProgramInput( v: FormValues, count: number ): ProgramInput 
 		schedule: buildSchedule( v ),
 		start: buildStart( v ),
 		durations,
-		name: typeof v.name === "string" ? v.name : "",
+		name: validateFirmwareString( name, "name", true, 32 ),
 	};
 	const dr = parseDate( String( v.drFrom ?? "" ) );
 	const dr2 = parseDate( String( v.drTo ?? "" ) );
+	if ( v.useDateRange && ( !dr || !dr2 ) ) throw new ValidationError( !dr ? "drFrom" : "drTo", "Enter a valid date range." );
 	if ( v.useDateRange && dr && dr2 ) {
 		input.dateRange = { enable: true, from: encodeDate( dr.month, dr.day ), to: encodeDate( dr2.month, dr2.day ) };
 	}

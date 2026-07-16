@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import {
 	minutesToHHMM, formatDuration, formatInterval, getDurationText, decodeEncodedDate,
-	decodeOneStartTime, decodeStartTimes, decodeProgramDays, decodeProgram, decodeStationState,
+	decodeOneStartTime, decodeStartTimes, decodeProgramDays, decodeProgram, decodeStationState, stationStatusBits,
 } from "../www/src/api/decode";
 import { parseJc, parseJn, parseJp } from "../www/src/api/client";
 
@@ -43,6 +43,12 @@ describe( "formatters", () => {
 		expect( decodeEncodedDate( 415 ) ).toBe( "12-31" );   // MAX (corrected: 12<<5 + 31)
 		expect( decodeEncodedDate( 161 ) ).toBe( "05-01" );
 		expect( decodeEncodedDate( 318 ) ).toBe( "09-30" );
+	} );
+} );
+
+describe( "station status", () => {
+	it( "packs cheap /js station status into /jc board bits", () => {
+		expect( stationStatusBits( [ 1, 0, 1, 0, 0, 0, 0, 0, 1 ] ) ).toEqual( [ 5, 1 ] );
 	} );
 } );
 

@@ -4,9 +4,9 @@
  * when DHCP is off (mirrors the legacy validation).
  */
 import type { JoResponse } from "../../api/types";
-import { textField, numberField, checkboxField, toInt } from "../../ui/form";
+import { textField, numberField, checkboxField } from "../../ui/form";
 import { infoNote } from "../../ui/help";
-import { ipOctets } from "../../api/encode";
+import { inputNumber, ipOctets, ValidationError } from "../../api/encode";
 
 export type FormValues = Record<string, string | boolean >;
 
@@ -34,17 +34,21 @@ export function renderNetwork( jo: JoResponse ): string {
 
 export function buildNetworkOptions( v: FormValues ): Record<string, string | number > {
 	const out: Record<string, string | number > = { dhcp: v.dhcp ? 1 : 0, ntp: v.ntp ? 1 : 0 };
-	const port = toInt( v.port, 80 );
+	const port = inputNumber( v.port, "port", 1, 65535 );
 	out.hp0 = port & 0xff;
 	out.hp1 = ( port >> 8 ) & 0xff;
-	const addOctets = ( prefix: string, dottedStr: unknown ): void => {
-		if ( typeof dottedStr !== "string" || dottedStr.trim() === "" ) return;
-		const [ a, b, c, d ] = ipOctets( dottedStr );
+	const addOctets = ( prefix: string, field: string, dottedStr: unknown, required = false ): void => {
+		if ( typeof dottedStr !== "string" || dottedStr.trim() === "" ) {
+			if ( required ) throw new ValidationError( field, "This IPv4 address is required when DHCP is off." );
+			return;
+		}
+		const [ a, b, c, d ] = ipOctets( dottedStr, field );
 		out[ `${ prefix }1` ] = a; out[ `${ prefix }2` ] = b; out[ `${ prefix }3` ] = c; out[ `${ prefix }4` ] = d;
 	};
 	if ( !v.dhcp ) {
-		addOctets( "ip", v.ip ); addOctets( "gw", v.gw ); addOctets( "dns", v.dns ); addOctets( "subn", v.subnet );
+		addOctets( "ip", "ip", v.ip, true ); addOctets( "gw", "gw", v.gw, true );
+		addOctets( "dns", "dns", v.dns ); addOctets( "subn", "subnet", v.subnet, true );
 	}
-	if ( v.ntp ) addOctets( "ntp", v.ntpServer );
+	if ( v.ntp ) addOctets( "ntp", "ntpServer", v.ntpServer );
 	return out;
 }

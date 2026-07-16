@@ -13,6 +13,7 @@ function fx( name: string ): unknown {
 }
 const jc = parseJc( fx( "jc" ) );
 const jo = parseJo( fx( "jo" ) );
+const { fwf: _forkTag, ...officialJo } = jo;
 const caps = deriveCapabilities( jc, jo );
 
 describe( "getForkTag", () => {
@@ -33,7 +34,7 @@ describe( "status view firmware line", () => {
 		expect( html ).toContain( "2.2.1 (4) +kars85.3" );
 	} );
 	it( "omits the fork suffix on official firmware", () => {
-		const html = renderControllerStatus( jc, jo, caps );
+		const html = renderControllerStatus( jc, officialJo as typeof jo, caps );
 		expect( html ).toContain( "2.2.1 (4)" );
 		expect( html ).not.toContain( "+kars85" );
 	} );

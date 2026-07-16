@@ -16,7 +16,7 @@ import type {
 } from "./types";
 import type { DeviceSeam } from "../seam/device";
 import {
-	encodeProgram, programSubmitPath, stationConfigPath, optionsPath,
+	encodeProgram, inputNumber, programSubmitPath, stationConfigPath, optionsPath,
 	type ProgramInput, type StationConfigInput,
 } from "./encode";
 
@@ -24,6 +24,20 @@ export class ApiError extends Error {
 	constructor( message: string, readonly endpoint: string, readonly raw?: unknown ) {
 		super( message );
 		this.name = "ApiError";
+	}
+}
+
+export class UnsupportedControllerError extends Error {
+	constructor( message = "This controller is not supported by the modern fork UI." ) {
+		super( message );
+		this.name = "UnsupportedControllerError";
+	}
+}
+
+export class AuthenticationRequiredError extends Error {
+	constructor( message = "Authentication required or password incorrect." ) {
+		super( message );
+		this.name = "AuthenticationRequiredError";
 	}
 }
 
@@ -35,8 +49,11 @@ export const COMMAND_RESULT_TEXT: Record<number, string> = {
 
 /** Thrown when a change command returns a non-success (`result !== 1`) code. */
 export class CommandError extends Error {
-	constructor( readonly code: number, readonly endpoint: string ) {
+	readonly endpoint: string;
+	constructor( readonly code: number, path: string ) {
+		const endpoint = path.split( "?" )[ 0 ]!;
 		super( ( COMMAND_RESULT_TEXT[ code ] ?? `command failed (result ${ code })` ) + ` [${ endpoint }]` );
+		this.endpoint = endpoint;
 		this.name = "CommandError";
 	}
 }
@@ -88,6 +105,27 @@ export function isPreAuthFallback( jo: Partial<JoResponse> ): boolean {
 	return typeof jo.fwv === "number" && Object.keys( jo ).length <= 2;
 }
 
+/** Reject unsupported firmware before credentials leave the browser. */
+export function requirePreAuthFloor( raw: unknown ): number {
+	const fwv = raw && typeof raw === "object" ? ( raw as Record<string, unknown> ).fwv : raw;
+	if ( typeof fwv !== "number" || !Number.isInteger( fwv ) || fwv < 221 ) {
+		throw new UnsupportedControllerError( "Firmware 2.2.1 or newer is required." );
+	}
+	return fwv;
+}
+
+/** Post-auth support gate shared by `/jo` and `/ja.options`. */
+export function requireSupportedOptions( jo: Partial<JoResponse> ): JoResponse {
+	if ( typeof jo.fwv !== "number" || typeof jo.wl !== "number" ) {
+		throw new AuthenticationRequiredError();
+	}
+	if ( jo.fwv !== 221 || typeof jo.fwm !== "number" || !Number.isInteger( jo.fwm ) || jo.fwv * 10 + jo.fwm < 2214 ||
+		typeof jo.fwf !== "string" || !jo.fwf.startsWith( "kars85." ) ) {
+		throw new UnsupportedControllerError( "Firmware 2.2.1(4) from the kars85 fork is required." );
+	}
+	return jo as JoResponse;
+}
+
 export function parseJn( raw: unknown ): JnResponse {
 	if ( typeof raw !== "object" || raw === null ) throw new ApiError( "not an object", "/jn", raw );
 	const o = raw as Record<string, unknown>;
@@ -134,7 +172,7 @@ export function parseJs( raw: unknown ): JsResponse {
 export function parseJa( raw: unknown ): JaResponse | JoPreAuthFallback {
 	if ( typeof raw !== "object" || raw === null || Array.isArray( raw ) ) throw new ApiError( "not an object", "/ja", raw );
 	const data = raw as Record<string, unknown>;
-	if ( typeof data.fwv === "number" && Object.keys( data ).length <= 2 ) return { fwv: data.fwv };
+	if ( "fwv" in data && Object.keys( data ).length <= 2 ) return { fwv: requirePreAuthFloor( data ) };
 	return {
 		settings: parseJc( data.settings ),
 		programs: parseJp( data.programs ),
@@ -142,6 +180,16 @@ export function parseJa( raw: unknown ): JaResponse | JoPreAuthFallback {
 		status: parseJs( data.status ),
 		stations: parseJn( data.stations ),
 	};
+}
+
+/** Apply the same pre-auth/auth/post-auth order to the aggregate endpoint. */
+export function requireSupportedAll( ja: JaResponse | JoPreAuthFallback ): JaResponse {
+	if ( "fwv" in ja ) {
+		requirePreAuthFloor( ja );
+		throw new AuthenticationRequiredError();
+	}
+	requireSupportedOptions( ja.options );
+	return ja;
 }
 
 /**
@@ -176,11 +224,16 @@ export class OsApiClient {
 
 	private async get<T>( path: string, parse: ( raw: unknown ) => T ): Promise<T> {
 		const raw = await this.seam.requestJson( path );
+		if ( typeof raw === "object" && raw !== null && ( raw as Record<string, unknown> ).result === 2 ) {
+			throw new AuthenticationRequiredError();
+		}
 		return parse( raw );
 	}
 
 	getControllerStatus(): Promise<JcResponse> { return this.get( "jc", parseJc ); }
 	getOptions(): Promise<JoResponse> { return this.get( "jo", parseJo ); }
+	/** Raw unauthenticated `/jo`; policy must run before the numeric parser. */
+	probeOptions(): Promise<unknown> { return this.seam.requestJson( "jo" ); }
 	getStations(): Promise<JnResponse> { return this.get( "jn", parseJn ); }
 	getSpecialStations(): Promise<JeResponse> { return this.get( "je", parseJe ); }
 	getPrograms(): Promise<JpResponse> { return this.get( "jp", parseJp ); }
@@ -200,10 +253,8 @@ export class OsApiClient {
 
 	/** Pre-auth firmware-version probe (works before login). */
 	async probeFirmwareVersion(): Promise<number> {
-		const raw = await this.seam.requestJson( "jo" );
-		const o = ( raw && typeof raw === "object" ) ? raw as Record<string, unknown> : {};
-		if ( typeof o.fwv !== "number" ) throw new ApiError( "no fwv in /jo", "/jo", raw );
-		return o.fwv;
+		const raw = await this.probeOptions();
+		return requirePreAuthFloor( raw );
 	}
 
 	/**
@@ -222,19 +273,19 @@ export class OsApiClient {
 
 	/** Manually start (en=1, with seconds) or stop (en=0) a station. /cm */
 	startStation( sid: number, seconds: number ): Promise<Record<string, unknown>> {
-		return this.command( `cm?sid=${ sid }&en=1&t=${ Math.max( 0, Math.round( seconds ) ) }` );
+		return this.command( `cm?sid=${ inputNumber( sid, "station", 0, 199 ) }&en=1&t=${ inputNumber( seconds, "duration", 1, 65535 ) }` );
 	}
 	stopStation( sid: number ): Promise<Record<string, unknown>> {
-		return this.command( `cm?sid=${ sid }&en=0` );
+		return this.command( `cm?sid=${ inputNumber( sid, "station", 0, 199 ) }&en=0` );
 	}
 	/** Run-once: per-station seconds (index = sid); a trailing 0 is appended for legacy fw. /cr */
 	runOnce( durationsBySid: number[] ): Promise<Record<string, unknown>> {
-		const t = JSON.stringify( [ ...durationsBySid.map( ( n ) => Math.max( 0, Math.round( n ) ) ), 0 ] );
+		const t = JSON.stringify( [ ...durationsBySid.map( ( n, sid ) => inputNumber( n, `duration_${ sid }`, 0, 65535 ) ), 0 ] );
 		return this.command( `cr?t=${ encodeURIComponent( t ) }` );
 	}
 	/** Set the rain delay in hours (0 cancels). /cv?rd= */
 	setRainDelayHours( hours: number ): Promise<Record<string, unknown>> {
-		return this.command( `cv?rd=${ Math.max( 0, hours ) }` );
+		return this.command( `cv?rd=${ inputNumber( hours, "rainDelay", 0, 32767 ) }` );
 	}
 	cancelRainDelay(): Promise<Record<string, unknown>> { return this.command( "cv?rd=0" ); }
 	stopAllStations(): Promise<Record<string, unknown>> { return this.command( "cv?rsn=1" ); }
@@ -245,20 +296,9 @@ export class OsApiClient {
 	clearOvercurrent(): Promise<Record<string, unknown>> { return this.command( "cv?rocs=1" ); }
 	deleteProgram( pid: number ): Promise<Record<string, unknown>> { return this.command( `dp?pid=${ pid }` ); }
 
-	/**
-	 * Enable/disable a program by re-packing its existing /jp tuple with flags bit0 flipped and
-	 * resubmitting via /cp (the firmware has no enable-only toggle). No decode needed — the read
-	 * tuple already carries the v-array fields.
-	 */
-	setProgramEnabled( pid: number, program: OSProgram, enabled: boolean ): Promise<Record<string, unknown>> {
-		const [ flags, days0, days1, starttimes, durations, name, daterange ] = program;
-		const newFlags = enabled ? ( flags | 1 ) : ( flags & ~1 );
-		const v: Array<number | number[]> = [ newFlags, days0, days1, starttimes, durations ];
-		let path = `cp?pid=${ pid }&v=${ encodeURIComponent( JSON.stringify( v ) ) }&name=${ encodeURIComponent( name ) }`;
-		if ( Array.isArray( daterange ) ) {
-			path += `&endr=${ daterange[ 0 ] ? 1 : 0 }&from=${ daterange[ 1 ] ?? 0 }&to=${ daterange[ 2 ] ?? 0 }`;
-		}
-		return this.command( path );
+	/** Enable/disable only; firmware supports this without rewriting the program tuple. */
+	setProgramEnabled( pid: number, enabled: boolean ): Promise<Record<string, unknown>> {
+		return this.command( `cp?pid=${ inputNumber( pid, "program", 0, 255 ) }&en=${ enabled ? 1 : 0 }` );
 	}
 
 	/** Run a program's per-station durations immediately as a run-once. /cr */

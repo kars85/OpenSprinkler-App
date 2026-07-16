@@ -1,6 +1,6 @@
 /**
- * Device login UI — md5 password prompt, ported from the legacy www/js/home.js flow.
- * Uses the seam's version-gated authenticate() (md5 for fwv>=213, cleartext fallback/<208).
+ * Device login UI — hash-only password prompt for the supported modern firmware floor.
+ * The frozen legacy app retains its older cleartext compatibility path.
  * Returns the validated pwHash to attach to the authenticated seam.
  */
 import { BrowserDeviceSeam } from "../seam/device";
@@ -23,7 +23,7 @@ export function renderLoginForm( error?: string ): string {
  * Drive the login form inside `mount`; resolves with the validated pwHash once the device accepts it.
  * Re-prompts on a wrong password or a transient error.
  */
-export function runLogin( mount: HTMLElement, baseUrl: string, fwv: number ): Promise<string> {
+export function runLogin( mount: HTMLElement, baseUrl: string ): Promise<string> {
 	return new Promise( ( resolve ) => {
 		function show( error?: string ): void {
 			mount.innerHTML = renderLoginForm( error );
@@ -37,8 +37,8 @@ export function runLogin( mount: HTMLElement, baseUrl: string, fwv: number ): Pr
 				button.disabled = true;
 				button.textContent = "Signing in…";
 				try {
-					const seam = new BrowserDeviceSeam( { baseUrl, ver: fwv } );
-					const result = await seam.authenticate( pw, fwv, md5 );
+					const seam = new BrowserDeviceSeam( { baseUrl } );
+					const result = await seam.authenticate( pw, md5 );
 					if ( result.ok ) { resolve( result.pwHash ); return; }
 					show( "Invalid password" );
 				} catch {

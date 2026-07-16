@@ -10,9 +10,8 @@
  *   - CORS / cross-origin requests    (home.js ~line 277/339)
  *   - LAN (http) vs OpenThings-Cloud (https tunnel) access paths
  *
- * The interface is final for the scaffold; BrowserDeviceSeam is a STUB whose TODOs map
- * 1:1 to the existing home.js logic to port. The seam spike (PRD §8 step 2) replaces the
- * stub with the real implementation and proves both access paths against a live device.
+ * The interface keeps transport details out of the views. BrowserDeviceSeam implements the
+ * modern fork policy; the frozen legacy app retains its older compatibility branches.
  */
 
 export interface DeviceSeamConfig {
@@ -58,13 +57,61 @@ export function readFirmwareGlobals(): { ver?: number; ipas?: number } {
 export interface AuthResult { ok: boolean; pwHash: string; }
 
 /**
- * Resolve the device base URL from the current location (LAN path), mirroring home.js
- * `document.URL.match(/(https?:\/\/.*)\/.*?/)[1]`. For OTC remote access, pass the cloud
- * forward URL as `baseUrl` instead — the seam treats both uniformly.
+ * Resolve the exact device base from the current page. Keeping the path is required for OTC
+ * forward URLs such as `/forward/v1/<token>/`; reducing this to `location.origin` misroutes every
+ * request. A file-like final segment is removed, while an existing trailing-slash path is kept.
  */
 export function resolveDeviceBaseFromLocation( href: string = ( globalThis as { location?: { href: string } } ).location?.href ?? "" ): string {
-	const m = href.match( /(https?:\/\/[^/]+)/ );
-	return m ? m[ 1 ] + "/" : "";
+	try {
+		const url = new URL( href );
+		if ( url.protocol !== "http:" && url.protocol !== "https:" ) return "";
+		url.search = "";
+		url.hash = "";
+		if ( !url.pathname.endsWith( "/" ) ) {
+			const last = url.pathname.slice( url.pathname.lastIndexOf( "/" ) + 1 );
+			url.pathname = /\.[a-z0-9]+$/i.test( last ) ? url.pathname.replace( /[^/]*$/, "" ) : url.pathname + "/";
+		}
+		return url.href;
+	} catch {
+		return "";
+	}
+}
+
+/** Normalize an explicitly supplied LAN/OTC base without dropping path segments. */
+export function normalizeDeviceBase( baseUrl: string ): string {
+	try {
+		const url = new URL( baseUrl );
+		if ( url.protocol !== "http:" && url.protocol !== "https:" ) return "";
+		url.search = "";
+		url.hash = "";
+		if ( !url.pathname.endsWith( "/" ) ) url.pathname += "/";
+		return url.href;
+	} catch {
+		return "";
+	}
+}
+
+/** Browsers block a standalone HTTPS app from calling a plain-HTTP controller. */
+export function isHostedMixedContent( appHref: string, deviceBase: string ): boolean {
+	try {
+		return new URL( appHref ).protocol === "https:" && new URL( deviceBase ).protocol === "http:";
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Return a recovery link only when it cannot disclose an OTC forwarding token in rendered DOM.
+ * OTC users still receive text-only `/su` guidance from the host.
+ */
+export function safeRecoveryHref( deviceBase: string ): string | undefined {
+	try {
+		const base = new URL( deviceBase );
+		if ( /\/forward\/v1\/[^/]+(?:\/|$)/i.test( base.pathname ) ) return undefined;
+		return new URL( "su", base ).href;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -72,7 +119,7 @@ export function resolveDeviceBaseFromLocation( href: string = ( globalThis as { 
  *   - request with the `pw=` (md5) auth param,
  *   - native `fetch` CORS (the legacy XDomainRequest IE8/9 shim is no longer needed),
  *   - LAN vs OTC handled uniformly via `config.baseUrl`,
- *   - version-gated auth check against `/sp` (md5 for fwv>=213, cleartext fallback/<208).
+ *   - hash-only modern authentication against `/jo` (the legacy cleartext fallback stays frozen).
  */
 export class BrowserDeviceSeam implements DeviceSeam {
 	constructor( readonly config: Readonly<DeviceSeamConfig> ) {}
@@ -95,7 +142,7 @@ export class BrowserDeviceSeam implements DeviceSeam {
 			mode: "cors",
 			headers: { Accept: "application/json" },
 		} );
-		if ( !res.ok ) throw new Error( `device request failed: ${ res.status } ${ res.statusText } (${ path })` );
+		if ( !res.ok ) throw new Error( `device request failed: ${ res.status } ${ res.statusText } (${ path.split( "?" )[ 0 ] })` );
 		return res.json();
 	}
 
@@ -110,7 +157,7 @@ export class BrowserDeviceSeam implements DeviceSeam {
 			const res = await fetch( this.buildUrl( path ), {
 				method: "GET", mode: "cors", headers: { Accept: "application/json" },
 			} );
-			if ( !res.ok ) throw new Error( `device command failed: ${ res.status } ${ res.statusText } (${ path })` );
+			if ( !res.ok ) throw new Error( `device command failed: ${ res.status } ${ res.statusText } (${ path.split( "?" )[ 0 ] })` );
 			return res.json();
 		}
 		const base = this.config.baseUrl.endsWith( "/" ) ? this.config.baseUrl : this.config.baseUrl + "/";
@@ -127,32 +174,13 @@ export class BrowserDeviceSeam implements DeviceSeam {
 		return res.json();
 	}
 
-	/**
-	 * Authenticate against the device (port of home.js homeCheckPW / version gating).
-	 * `GET /sp?pw=&npw=&cpw=` returns `{result}` (<=1 = valid). fwv>=213 hashes with md5
-	 * (cleartext fallback); fwv<208 sends cleartext. Returns the pwHash to store on the seam.
-	 */
-	async authenticate( password: string, fwv: number, md5: Md5 ): Promise<AuthResult> {
-		if ( fwv < 208 ) {
-			return { ok: await this.checkPassword( password ), pwHash: password };
-		}
-		if ( fwv >= 213 ) {
-			const hashed = md5( password );
-			if ( await this.checkPassword( hashed ) ) return { ok: true, pwHash: hashed };
-			// fall back to cleartext for devices that pre-date hashed auth
-			return { ok: await this.checkPassword( password ), pwHash: password };
-		}
-		return { ok: await this.checkPassword( password ), pwHash: password };
-	}
-
-	/** `GET /sp?pw=&npw=&cpw=` → `{result}`; valid when result is defined and <= 1. */
-	private async checkPassword( pass: string ): Promise<boolean> {
-		const base = this.config.baseUrl.endsWith( "/" ) ? this.config.baseUrl : this.config.baseUrl + "/";
-		const p = encodeURIComponent( pass );
-		const res = await fetch( `${ base }sp?pw=${ p }&npw=${ p }&cpw=${ p }`, { method: "GET", mode: "cors" } );
-		if ( !res.ok ) return false;
-		const data = await res.json() as { result?: number };
-		return typeof data.result !== "undefined" && data.result <= 1;
+	/** Hash-only modern authentication. A `fwv`-only `/jo` response means wrong password. */
+	async authenticate( password: string, md5: Md5 ): Promise<AuthResult> {
+		const pwHash = md5( password );
+		const seam = new BrowserDeviceSeam( { ...this.config, pwHash } );
+		const raw = await seam.requestJson( "jo" );
+		const data = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+		return { ok: typeof data.fwv === "number" && typeof data.wl === "number", pwHash };
 	}
 }
 

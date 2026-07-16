@@ -42,13 +42,16 @@ function emptyMark(): string {
 		`<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>`;
 }
 
-/**
- * Friendly empty-state replacing a bare/blank/"[]" rendering (upstream #289). `message` is the
- * primary line; optional `hint` is a quieter explanatory sentence. A decorative droplet leads the row.
- */
-export function emptyState( message: string, hint?: string ): string {
-	return `<p class="empty-state">${ emptyMark() }<span class="empty-msg">${ esc( message ) }` +
-		( hint ? ` <span class="muted">${ esc( hint ) }</span>` : "" ) + `</span></p>`;
+export interface EmptyStateAction { label: string; action: string; target?: string; }
+
+/** Friendly empty-state with explanation and an optional task action. */
+export function emptyState( message: string, hint?: string, task?: EmptyStateAction ): string {
+	const action = task
+		? ` <button class="action" type="button" data-action="${ esc( task.action ) }"` +
+			( task.target ? ` data-target="${ esc( task.target ) }"` : "" ) + `>${ esc( task.label ) }</button>`
+		: "";
+	return `<div class="empty-state">${ emptyMark() }<span class="empty-msg">${ esc( message ) }` +
+		( hint ? ` <span class="muted">${ esc( hint ) }</span>` : "" ) + action + `</span></div>`;
 }
 
 /** A short muted note used to introduce/explain a section to non-experts (discoverability #292). */
@@ -70,4 +73,12 @@ export function errorCard( detail: string ): string {
 		`<span>Couldn't reach the controller</span></div>` +
 		`<p class="error-detail">${ esc( detail ) }</p>` +
 		`<button class="action primary" type="button" data-action="retry">Retry</button></div>`;
+}
+
+/** Terminal support-policy state: no automatic retry and a safe route back to the legacy UI. */
+export function unsupportedCard( detail: string ): string {
+	return `<div class="error-card" role="alert"><div class="error-title">Unsupported controller</div>` +
+		`<p class="error-detail">${ esc( detail ) }</p>` +
+		`<div class="action-bar"><a class="action primary" href="https://ui.opensprinkler.com/">Open legacy UI</a>` +
+		`<button class="action" type="button" data-action="retry">Retry</button></div></div>`;
 }

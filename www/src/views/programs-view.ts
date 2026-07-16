@@ -45,7 +45,8 @@ export function renderPrograms( jp: JpResponse, jn: JnResponse, opts: ProgramsVi
 	const programs = decodeAllPrograms( jp, jn.snames );
 	const body = programs.length
 		? programs.map( ( p, i ) => renderProgram( p, i, !!opts.actions ) ).join( "" )
-		: emptyState( "No programs yet", "Create a program to schedule automatic watering." );
+		: emptyState( "No programs yet", "Create a program to schedule automatic watering.",
+			{ label: "Draft a program", action: "open-settings", target: "Programs" } );
 	const newBtn = opts.actions ? actionBar( actionButton( "program-new", "+ New program", {} ) ) : "";
 	return `<section aria-label="Programs"><h2>Programs <span class="muted">(${ programs.length })</span></h2>${ newBtn }${ body }</section>`;
 }

@@ -9,7 +9,7 @@
  * isolated spike used to validate the seam before committing to the UI rewrite.
  */
 import { BrowserDeviceSeam, readFirmwareGlobals, resolveDeviceBaseFromLocation, type Md5 } from "../seam/device";
-import { OsApiClient, deriveCapabilities } from "../api/client";
+import { OsApiClient, deriveCapabilities, requirePreAuthFloor, requireSupportedOptions } from "../api/client";
 import { renderControllerStatus } from "./status-view";
 
 export interface SpikeOptions {
@@ -25,19 +25,20 @@ export async function bootStatusSpike( opts: SpikeOptions, mount?: { innerHTML: 
 	if ( !baseUrl ) throw new Error( "could not resolve device base URL" );
 
 	const seam = new BrowserDeviceSeam( { baseUrl, ver, ipas } );
+	const fwv = requirePreAuthFloor( ver ?? await new OsApiClient( seam ).probeFirmwareVersion() );
 
 	// Authenticate unless the device ignores passwords (ipas) or none was supplied.
 	let pwHash = "";
 	if ( ipas !== 1 && opts.password ) {
-		const auth = await seam.authenticate( opts.password, ver ?? 0, opts.md5 );
+		const auth = await seam.authenticate( opts.password, opts.md5 );
 		if ( !auth.ok ) throw new Error( "authentication failed" );
 		pwHash = auth.pwHash;
 	}
 
-	const authedSeam = new BrowserDeviceSeam( { baseUrl, ver, ipas, pwHash } );
+	const authedSeam = new BrowserDeviceSeam( { baseUrl, ver: fwv, ipas, pwHash } );
 	const api = new OsApiClient( authedSeam );
 
-	const [ jc, jo ] = await Promise.all( [ api.getControllerStatus(), api.getOptions() ] );
+	const [ jc, jo ] = await Promise.all( [ api.getControllerStatus(), api.getOptions().then( requireSupportedOptions ) ] );
 	const html = renderControllerStatus( jc, jo, deriveCapabilities( jc, jo ) );
 	if ( mount ) mount.innerHTML = html;
 	return html;

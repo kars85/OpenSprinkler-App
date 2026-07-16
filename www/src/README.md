@@ -25,7 +25,7 @@ fixtures in `test/fixtures/api/`. Replace those fixtures with **live device capt
 control/action paths and full Settings — all unit-proven, pending on-device validation.
 
 - `seam/device.ts` ports the real `www/js/home.js` device-comms (native-`fetch` CORS, `pw=` md5
-  auth via `/sp`, version gating, LAN/OTC-uniform base) + change-command transport (POST on
+  hash-only auth via `/jo`, version gating, LAN/OTC-uniform base) + change-command transport (POST on
   `fwv>=300`, else GET).
 - `api/decode.ts` / `api/encode.ts` decode **and** encode programs/stations/options faithfully from
   the firmware encodings (round-trip tested).

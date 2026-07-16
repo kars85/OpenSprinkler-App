@@ -12,7 +12,7 @@
 /** /jc — controller status (server_json_controller_main, opensprinkler_server.cpp:1226+). */
 export interface JcResponse {
 	devt: number;            // device time (unix, controller tz)
-	nbrd: number;            // expansion boards (0 = 1 board)
+	nbrd: number;            // total boards, including the main controller (minimum 1)
 	en: 0 | 1;               // controller enabled
 	sn1: 0 | 1; sn2: 0 | 1;  // sensor active
 	rd: 0 | 1; rdst: number; // rain delay + stop time (unix)

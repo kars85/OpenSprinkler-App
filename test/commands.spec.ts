@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { OsApiClient, CommandError } from "../www/src/api/client";
 import { BrowserDeviceSeam, type DeviceSeam } from "../www/src/seam/device";
+import { ValidationError } from "../www/src/api/encode";
 
 /** Mock seam that records the last runCommand path and returns a configurable result. */
 class MockSeam implements DeviceSeam {
@@ -30,6 +31,7 @@ describe( "typed command paths", () => {
 		[ () => api.reboot(), "cv?rbt=1" ],
 		[ () => api.clearOvercurrent(), "cv?rocs=1" ],
 		[ () => api.deleteProgram( 1 ), "dp?pid=1" ],
+		[ () => api.setProgramEnabled( 1, false ), "cp?pid=1&en=0" ],
 		[ () => api.submitOptions( { wl: 120, uwt: 1 } ), "co?wl=120&uwt=1" ],
 	];
 	for ( const [ run, expected ] of cases ) {
@@ -38,6 +40,12 @@ describe( "typed command paths", () => {
 			expect( seam.lastPath ).toBe( expected );
 		} );
 	}
+	it( "rejects invalid durations and rain delay before transport", async () => {
+		seam.lastPath = "";
+		expect( () => api.startStation( 2, Number.NaN ) ).toThrow( ValidationError );
+		expect( () => api.setRainDelayHours( -1 ) ).toThrow( ValidationError );
+		expect( seam.lastPath ).toBe( "" );
+	} );
 } );
 
 describe( "getLogs sends the firmware-required start/end range", () => {
@@ -70,6 +78,14 @@ describe( "command result handling", () => {
 		const api = new OsApiClient( seam );
 		await expect( api.stopAllStations() ).rejects.toBeInstanceOf( CommandError );
 		await expect( api.stopAllStations() ).rejects.toThrow( /Unauthorized/ );
+	} );
+	it( "never includes mutation query values in an error", async () => {
+		const seam = new MockSeam();
+		seam.result = 2;
+		const api = new OsApiClient( seam );
+		const error = await api.submitOptions( { wto: '"key":"PRIVATE_API_KEY"' } ).catch( ( e: unknown ) => e );
+		expect( String( error ) ).not.toContain( "PRIVATE_API_KEY" );
+		expect( error ).toMatchObject( { endpoint: "co" } );
 	} );
 } );
 

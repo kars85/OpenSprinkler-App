@@ -1,4 +1,4 @@
-# Phase-1 dashboard — deploy & rollout (DRAFT)
+# Phase-1 dashboard — deploy & rollout
 
 The modernized read-only dashboard deploys to a **parallel** Firebase Hosting site, completely
 separate from the live legacy app, so rollout is opt-in and reversible. **Nothing here deploys
@@ -62,12 +62,11 @@ http://<device-ip>/cu?jsp=https://<nextui-domain>&pw=<md5(password)>
   `home.js` is reachable at `<jsp>/home.js`.
   Verified by `test/home-bootstrap.spec.ts` (jsdom).
 - The **md5 login UI** is built (`www/src/auth/`): non-`ipas` devices get a password prompt that
-  authenticates via the version-gated `/sp` check (md5 for `fwv>=213`). md5 is verified against
+  authenticates with a hashed `/jo` request; the modern path never sends cleartext or uses `/sp`. md5 is verified against
   RFC 1321 vectors. `?pwhash=<md5>` still works for automated/standalone access.
-- The dashboard now has **write/control + full settings** (manual run, run-once, rain delay,
-  enable/stop-all, program run/enable/delete, and General/Weather/Network/Stations/Programs editors).
-  The command/encoder layer is unit-proven (request construction + encode↔decode round-trips); it is
-  **not yet validated on real hardware**.
+- The production dashboard is **read-only by default**. Its command/encoder layer and guarded
+  option-write path are unit-proven, but controls remain hidden until each approved action passes
+  the hardware gate.
 - ⚠️ **Before pointing production devices here**, run the on-device checklist in
   [`docs/HARDWARE-VERIFICATION.md`](HARDWARE-VERIFICATION.md) (LAN + OTC render, auth, and a safe
   control smoke test), and capture live fixtures with `npm run capture` (see below).
@@ -99,9 +98,8 @@ command arguments.
 
 ## Status / caveats
 
-- The dashboard is now **read + write**: control actions and full settings editors are wired through
-  the typed command layer (`www/src/api/client.ts` + `encode.ts`), unit-proven but **pending
-  on-device validation** — see [`docs/HARDWARE-VERIFICATION.md`](HARDWARE-VERIFICATION.md).
+- The production dashboard is **read-only** while hardware proof is pending. Write/control code is
+  behind an explicit host gate — see [`docs/HARDWARE-VERIFICATION.md`](HARDWARE-VERIFICATION.md).
 - The firmware-loaded **`home.js` bootstrap entry is produced** (`dist/home.js` → loads
   `assets/app.js`); the standalone `index.html` SPA also works for direct access (`?base=`).
 - Auth: `ipas` devices skip login; others get the md5 password prompt (`www/src/auth/`).

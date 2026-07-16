@@ -31,23 +31,54 @@ describe( "general options", () => {
 		expect( buildGeneralOptions( { dname: "Yard", tzOffset: "0", wl: "100", sdt: "0", lg: false, sn1t: "0", sn1o: false }, 2190 ) )
 			.not.toHaveProperty( "dname" );
 	} );
+	it( "rejects device names the firmware would rewrite", () => {
+		expect( () => buildGeneralOptions( {
+			dname: "Back\\Yard", tzOffset: "0", wl: "100", sdt: "0", lg: false, sn1t: "0", sn1o: false,
+		}, 2214 ) ).toThrow( /backslashes/ );
+	} );
+	it( "validates the signed, quantized station-delay contract", () => {
+		const base = { dname: "Yard", tzOffset: "0", wl: "100", lg: false, sn1t: "0", sn1o: false };
+		expect( buildGeneralOptions( { ...base, sdt: "-15" }, 2214 ).sdt ).toBe( -15 );
+		expect( () => buildGeneralOptions( { ...base, sdt: "7" }, 2214 ) ).toThrow( /5-second/ );
+		expect( () => buildGeneralOptions( { ...base, sdt: "-605" }, 2214 ) ).toThrow( /-600/ );
+	} );
 } );
 
 describe( "weather options", () => {
-	it( "packs uwt method+restriction and merges provider/key into existing wto", () => {
+	it( "stores the method in uwt and the restriction in wto.cali", () => {
 		const out = buildWeatherOptions(
 			{ method: "1", restriction: true, loc: "37,-122", provider: "OWM", key: "abc" },
 			{ scales: [ 100, 100 ] },
 		);
-		expect( out.uwt ).toBe( 1 | 0x80 );
+		expect( out.uwt ).toBe( 1 );
 		expect( out.loc ).toBe( "37,-122" );
 		expect( out.wto ).toContain( '"scales":[100,100]' ); // preserved
 		expect( out.wto ).toContain( '"provider":"OWM"' );
 		expect( out.wto ).toContain( '"key":"abc"' );
+		expect( out.wto ).toContain( '"cali":1' );
 	} );
-	it( "underscores spaces in loc for fw>=208 and omits a blank loc", () => {
-		expect( buildWeatherOptions( { method: "0", loc: "New York, NY" }, {}, 221 ).loc ).toBe( "New_York,_NY" );
-		expect( buildWeatherOptions( { method: "0", loc: "" }, {}, 221 ) ).not.toHaveProperty( "loc" );
+	it( "preserves spaces in location and omits a blank location", () => {
+		expect( buildWeatherOptions( { method: "0", loc: "New York, NY" }, {} ).loc ).toBe( "New York, NY" );
+		expect( buildWeatherOptions( { method: "0", loc: "" }, {} ) ).not.toHaveProperty( "loc" );
+	} );
+	it( "does not overwrite a stored key when the submitted key is blank", () => {
+		const out = buildWeatherOptions( { method: "3", key: "" }, { key: "stored" } );
+		expect( out.wto ).toContain( '"key":"stored"' );
+	} );
+	it( "clears a stored key only when explicitly requested", () => {
+		const out = buildWeatherOptions( { method: "3", key: "", clearKey: true }, { key: "stored", provider: "OWM" } );
+		expect( out.wto ).not.toContain( "stored" );
+		expect( out.wto ).toContain( '"key":""' );
+		expect( out.wto ).toContain( '"provider":"OWM"' );
+	} );
+	it( "emits a non-empty firmware payload when the key is the only stored weather option", () => {
+		expect( buildWeatherOptions( { method: "0", key: "", clearKey: true }, { key: "stored" } ).wto )
+			.toBe( '"key":""' );
+	} );
+	it( "rejects firmware-rewritten location characters and oversized weather options", () => {
+		expect( () => buildWeatherOptions( { method: "0", loc: 'Bad "place"' }, {} ) ).toThrow( /Quotes/ );
+		expect( () => buildWeatherOptions( { method: "0" }, { key: "é".repeat( 160 ) } ) ).toThrow( /320 UTF-8 bytes/ );
+		expect( () => buildWeatherOptions( { method: "not-a-method" }, {} ) ).toThrow( /whole number/ );
 	} );
 } );
 
@@ -68,6 +99,12 @@ describe( "network options", () => {
 		expect( out ).not.toHaveProperty( "ip1" );
 		expect( out.dhcp ).toBe( 1 );
 	} );
+	it( "rejects malformed addresses and ports instead of coercing them", () => {
+		expect( () => buildNetworkOptions( {
+			dhcp: false, ip: "192.168.1.999", gw: "192.168.1.1", subnet: "255.255.255.0", port: "80", ntp: false,
+		} ) ).toThrow( /octet/i );
+		expect( () => buildNetworkOptions( { dhcp: true, port: "70000", ntp: false } ) ).toThrow( /65535/ );
+	} );
 } );
 
 describe( "station config", () => {
@@ -86,12 +123,24 @@ describe( "station config", () => {
 		const cfg = buildStationConfig( { name_0: "A", dis_0: false, rain_0: false }, 1, 219 );
 		expect( cfg.groups ).toBeUndefined();
 	} );
+	it( "preserves station-name spaces and rejects values firmware would ignore or rewrite", () => {
+		expect( buildStationConfig( {
+			name_0: "Front Lawn", dis_0: false, rain_0: false, grp_0: "0",
+		}, 1, 221 ).names ).toEqual( { 0: "Front Lawn" } );
+		expect( () => buildStationConfig( {
+			name_0: "", dis_0: false, rain_0: false, grp_0: "0",
+		}, 1, 221 ) ).toThrow( /station name/ );
+		expect( () => buildStationConfig( {
+			name_0: 'Front "Lawn"', dis_0: false, rain_0: false, grp_0: "0",
+		}, 1, 221 ) ).toThrow( /Quotes/ );
+	} );
 } );
 
 describe( "program editor mapper", () => {
-	it( "parseClock handles HH:MM, midnight wrap, and invalid", () => {
+	it( "parseClock accepts valid HH:MM and rejects invalid clocks", () => {
 		expect( parseClock( "06:30" ) ).toBe( 390 );
-		expect( parseClock( "24:00" ) ).toBe( 0 );
+		expect( parseClock( "24:00" ) ).toBeNull();
+		expect( parseClock( "12:60" ) ).toBeNull();
 		expect( parseClock( "nope" ) ).toBeNull();
 	} );
 	it( "builds a ProgramInput that survives encode→decode", () => {
@@ -120,5 +169,43 @@ describe( "program editor mapper", () => {
 			useDateRange: true, drFrom: "2024-05-01", drTo: "2024-09-30", dur_0: "10",
 		}, 1 );
 		expect( input.dateRange ).toEqual( { enable: true, from: encodeDate( 5, 1 ), to: encodeDate( 9, 30 ) } );
+	} );
+	it( "rejects invalid schedule times, dates, and durations", () => {
+		const base = {
+			name: "Bad", enabled: false, useWeather: false, restriction: "none", schedType: "weekly", wd_0: true,
+			startType: "fixed", t_0: "24:00", dur_0: "10",
+		};
+		expect( () => buildProgramInput( base, 1 ) ).toThrow( /24-hour time/ );
+		expect( () => buildProgramInput( { ...base, t_0: "06:00", dur_0: "nope" }, 1 ) ).toThrow( /number/ );
+		expect( () => buildProgramInput( {
+			...base, schedType: "singlerun", singleDate: "2026-02-30", t_0: "06:00",
+		}, 1 ) ).toThrow( /valid date/ );
+	} );
+	it( "rejects interval wrap, duplicate starts, fractional seconds, and epoch overflow", () => {
+		const base = {
+			name: "Guarded", enabled: false, useWeather: false, restriction: "none",
+			startType: "fixed", t_0: "06:00", dur_0: "10",
+		};
+		expect( () => buildProgramInput( {
+			...base, schedType: "interval", intervalDays: "4", startingInDays: "4",
+		}, 1 ) ).toThrow( /less than the interval/ );
+		expect( () => buildProgramInput( {
+			...base, schedType: "weekly", wd_0: true, t_1: "06:00",
+		}, 1 ) ).toThrow( /unique/ );
+		expect( () => buildProgramInput( {
+			...base, schedType: "weekly", wd_0: true, dur_0: "0.001",
+		}, 1 ) ).toThrow( /whole seconds/ );
+		expect( () => buildProgramInput( {
+			...base, schedType: "singlerun", singleDate: "2149-12-31",
+		}, 1 ) ).toThrow( /supported range/ );
+		expect( () => buildProgramInput( {
+			...base, name: "x".repeat( 32 ), schedType: "weekly", wd_0: true,
+		}, 1 ) ).toThrow( /32 UTF-8 bytes/ );
+		expect( () => buildProgramInput( {
+			...base, name: " ", schedType: "weekly", wd_0: true,
+		}, 1 ) ).toThrow( /program name/ );
+		expect( () => buildProgramInput( {
+			...base, name: "Front\\Yard", schedType: "weekly", wd_0: true,
+		}, 1 ) ).toThrow( /backslashes/ );
 	} );
 } );

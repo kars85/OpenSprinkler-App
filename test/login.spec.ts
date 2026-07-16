@@ -9,8 +9,11 @@ import { md5 } from "../www/src/auth/md5";
 
 afterEach( () => vi.restoreAllMocks() );
 
-function mockSp( result: number ): typeof fetch {
-	return vi.fn( async () => ( { ok: true, status: 200, json: async () => ( { result } ) } ) as Response ) as unknown as typeof fetch;
+function mockJo( authenticated: boolean ): typeof fetch {
+	return vi.fn( async () => ( {
+		ok: true, status: 200, statusText: "OK",
+		json: async () => authenticated ? { fwv: 221, wl: 100 } : { fwv: 221 },
+	} ) as Response ) as unknown as typeof fetch;
 }
 
 function submit( mount: HTMLElement, pw: string ): void {
@@ -27,17 +30,17 @@ describe( "renderLoginForm", () => {
 
 describe( "runLogin", () => {
 	it( "resolves with md5(pw) when the device accepts it (fwv>=213)", async () => {
-		globalThis.fetch = mockSp( 0 );
+		globalThis.fetch = mockJo( true );
 		const mount = document.createElement( "div" );
-		const p = runLogin( mount, "http://d/", 221 );
+		const p = runLogin( mount, "http://d/" );
 		submit( mount, "secret" );
 		await expect( p ).resolves.toBe( md5( "secret" ) );
 	} );
 
 	it( "re-prompts with an error on a wrong password", async () => {
-		globalThis.fetch = mockSp( 2 );
+		globalThis.fetch = mockJo( false );
 		const mount = document.createElement( "div" );
-		void runLogin( mount, "http://d/", 221 );
+		void runLogin( mount, "http://d/" );
 		submit( mount, "wrong" );
 		await new Promise( ( r ) => setTimeout( r, 0 ) ); // let the async handler re-render
 		expect( mount.innerHTML ).toContain( "Invalid password" );

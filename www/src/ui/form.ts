@@ -15,6 +15,13 @@ export function textField( name: string, label: string, value = "", opts: { help
 		( opts.placeholder ? ` placeholder="${ esc( opts.placeholder ) }"` : "" ) + `></div>`;
 }
 
+/** Secret field that never renders a stored value back into the document. */
+export function passwordField( name: string, label: string, opts: { help?: string; placeholder?: string } = {} ): string {
+	return `<div class="field">${ labelHtml( name, label, opts.help ) }` +
+		`<input type="password" id="f-${ esc( name ) }" name="${ esc( name ) }" autocomplete="off"` +
+		( opts.placeholder ? ` placeholder="${ esc( opts.placeholder ) }"` : "" ) + `></div>`;
+}
+
 export function numberField( name: string, label: string, value: number | string = "", opts: { min?: number; max?: number; step?: number; help?: string } = {} ): string {
 	const attr = ( k: string, v?: number ): string => ( v === undefined ? "" : ` ${ k }="${ v }"` );
 	return `<div class="field">${ labelHtml( name, label, opts.help ) }` +

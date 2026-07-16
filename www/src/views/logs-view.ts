@@ -24,7 +24,8 @@ export function renderLogs( jl: JlResponse, jn: JnResponse ): string {
 	).join( "" );
 	const body = entries.length
 		? rows
-		: `<tr><td colspan="3">${ emptyState( "No log entries yet", "Watering runs and sensor events will appear here." ) }</td></tr>`;
+		: `<tr><td colspan="3">${ emptyState( "No log entries yet", "Watering runs and sensor events will appear here.",
+			{ label: "Retry", action: "retry" } ) }</td></tr>`;
 	return `<section aria-label="Log"><h2>Log <span class="muted">(${ entries.length })</span></h2>` +
 		`<table class="grid"><thead><tr>` +
 		`<th scope="col">When (UTC) ${ helpTip( "Timestamps are shown in UTC, not your local timezone." ) }</th>` +

@@ -11,6 +11,36 @@
  *   date encode:   (month<<5) + day   (month 1-12)
  */
 
+export class ValidationError extends Error {
+	constructor( readonly field: string, message: string ) {
+		super( message );
+		this.name = "ValidationError";
+	}
+}
+
+/** Firmware string-option slots are 320 bytes including the trailing NUL. */
+export function validateFirmwareString( value: string, field: string, rejectRewritten = false, maxBytes = 320 ): string {
+	if ( new TextEncoder().encode( value ).length >= maxBytes ) {
+		throw new ValidationError( field, `Enter fewer than ${ maxBytes } UTF-8 bytes.` );
+	}
+	if ( rejectRewritten && /["\\]/.test( value ) ) {
+		throw new ValidationError( field, "Quotes and backslashes are not supported by the controller." );
+	}
+	return value;
+}
+
+/** Strict numeric parsing for form/device trust boundaries; never coerce malformed input. */
+export function inputNumber(
+	value: unknown, field: string, min: number, max: number, integer = true,
+): number {
+	const text = typeof value === "string" ? value.trim() : String( value ?? "" );
+	const number = text === "" ? NaN : Number( text );
+	if ( !Number.isFinite( number ) || ( integer && !Number.isInteger( number ) ) || number < min || number > max ) {
+		throw new ValidationError( field, `Enter a ${ integer ? "whole number" : "number" } from ${ min } to ${ max }.` );
+	}
+	return number;
+}
+
 // ---- start times -------------------------------------------------------------
 
 export type StartTimeInput =
@@ -162,9 +192,7 @@ export function stationConfigPath( cfg: StationConfigInput ): string {
 	};
 	if ( cfg.names ) {
 		for ( const [ sid, name ] of Object.entries( cfg.names ) ) {
-			// fw208+ replaces spaces with underscores (firmware parsing bug workaround).
-			const n = cfg.fwv >= 208 ? name.replace( /\s/g, "_" ) : name;
-			kv.push( `s${ sid }=${ encodeURIComponent( n ) }` );
+			kv.push( `s${ sid }=${ encodeURIComponent( name ) }` );
 		}
 	}
 	addBoards( "m", cfg.masop );
@@ -212,13 +240,20 @@ export function optionsPath( named: Record<string, string | number> ): string {
 	return "co?" + kv.join( "&" );
 }
 
-/** uwt = (method & 0x7f) | (restriction ? 0x80 : 0) — adjustment method + weather-restriction bit. */
-export function encodeUwt( methodId: number, restriction: boolean ): number {
-	return ( methodId & 0x7f ) | ( restriction ? 0x80 : 0 );
+/** Supported firmware stores only the adjustment method in uwt; restrictions live in wto. */
+export function encodeUwt( methodId: number ): number {
+	return methodId & 0x7f;
 }
 
 /** Dotted-quad "a.b.c.d" -> 4 octets for ipN/gwN/dnsN/subnN/ntpN option keys. */
-export function ipOctets( dotted: string ): [ number, number, number, number ] {
-	const p = dotted.split( "." ).map( ( n ) => parseInt( n, 10 ) & 0xff );
-	return [ p[ 0 ] || 0, p[ 1 ] || 0, p[ 2 ] || 0, p[ 3 ] || 0 ];
+export function ipOctets( dotted: string, field = "address" ): [ number, number, number, number ] {
+	const parts = dotted.trim().split( "." );
+	if ( parts.length !== 4 || parts.some( ( part ) => !/^\d{1,3}$/.test( part ) ) ) {
+		throw new ValidationError( field, "Enter a valid IPv4 address." );
+	}
+	const octets = parts.map( Number );
+	if ( octets.some( ( octet ) => octet < 0 || octet > 255 ) ) {
+		throw new ValidationError( field, "Each IPv4 octet must be from 0 to 255." );
+	}
+	return octets as [ number, number, number, number ];
 }

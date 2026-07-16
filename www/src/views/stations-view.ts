@@ -1,7 +1,7 @@
 /**
  * Stations read-only view — renders /jn (names + attributes) + /jc (live state) via the decoders.
  */
-import type { JcResponse, JnResponse } from "../api/types";
+import type { JcResponse, JeResponse, JnResponse } from "../api/types";
 import { decodeAllStations, formatDuration, PARALLEL_GROUP_ID, type StationState } from "../api/decode";
 import { esc, emptyState } from "../ui/help";
 import { actionBar, actionButton } from "../ui/controls";
@@ -24,6 +24,15 @@ function groupLabel( g: number ): string {
 	return g === PARALLEL_GROUP_ID ? "Parallel" : `Seq ${ g }`;
 }
 
+const SPECIAL_TYPE_LABELS: Record<number, string> = {
+	1: "RF", 2: "Remote controller", 3: "GPIO", 4: "HTTP", 5: "HTTPS", 6: "OTC remote",
+};
+
+function specialLabel( sid: number, je: JeResponse ): string {
+	const type = je[ String( sid ) ]?.st;
+	return SPECIAL_TYPE_LABELS[ type ] ?? "Unknown special type";
+}
+
 function rowActions( s: StationState ): string {
 	if ( s.disabled ) return "";
 	return s.on
@@ -31,17 +40,18 @@ function rowActions( s: StationState ): string {
 		: actionButton( "station-start", "Start", { sid: s.index } );
 }
 
-export function renderStations( jc: JcResponse, jn: JnResponse, opts: StationsViewOptions = {} ): string {
+export function renderStations( jc: JcResponse, jn: JnResponse, je: JeResponse = {}, opts: StationsViewOptions = {} ): string {
 	const stations = decodeAllStations( jc, jn );
 	if ( stations.length === 0 ) {
 		return `<section aria-label="Stations"><h2>Stations</h2>` +
-			emptyState( "No stations configured", "Add stations in the controller's settings to start watering." ) +
+			emptyState( "No stations configured", "Add stations in the controller's settings to start watering.",
+				{ label: "Review zone settings", action: "open-settings", target: "Stations" } ) +
 			`</section>`;
 	}
 	const actionsCol = opts.actions ? '<th scope="col">Run</th>' : "";
 	const rows = stations.map( ( s ) =>
 		`<tr><td class="num">${ s.index + 1 }</td>` +
-		`<td>${ esc( s.name ) }${ s.special ? ' <span class="badge spec">Special</span>' : "" }</td>` +
+		`<td>${ esc( s.name ) }${ s.special ? ` <span class="badge spec">${ specialLabel( s.index, je ) }</span>` : "" }</td>` +
 		`<td>${ stateLabel( s ) }</td>` +
 		`<td class="muted">${ groupLabel( s.group ) }</td>` +
 		( opts.actions ? `<td>${ rowActions( s ) }</td>` : "" ) + `</tr>`

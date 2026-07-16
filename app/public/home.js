@@ -1,4 +1,4 @@
-/* OpenSprinkler Phase-1 bootstrap entry — home.js (DRAFT prototype).
+/* OpenSprinkler Phase-1 bootstrap entry — home.js.
  *
  * This is the classic (non-module) script the firmware loads. server_home
  * (OpenSprinkler-Firmware/opensprinkler_server.cpp:1362) emits:
@@ -7,14 +7,15 @@
  *     <script src="<SOPT_JAVASCRIPTURL>/home.js"></script>
  *
  * So when this runs, `window.ver` / `window.ipas` are already set and the page is being
- * served from (LAN) or proxied to (OTC) the device — i.e. `location.origin` is the device.
+ * served from (LAN) or proxied to (OTC) the device. The app preserves the complete page path,
+ * including an OTC `/forward/v1/<token>/` prefix.
  *
  * Responsibilities (mirrors the proven legacy www/js/home.js getAssetLocation pattern):
  *   1. self-locate the asset base from this script's own URL,
  *   2. ensure a #app mount node (the firmware page body has only the two scripts),
  *   3. load the Vite-built dashboard module + its CSS from that base.
  * The dashboard module (app/main.ts → assets/app.js) then talks to the device at
- * location.origin and renders the read-only views.
+ * the resolved device base and renders the read-only views.
  */
 ( function () {
 	function assetBase() {

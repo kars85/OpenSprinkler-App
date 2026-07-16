@@ -11,21 +11,23 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 import { bootStatusSpike } from "../www/src/spike/boot";
-import { BrowserDeviceSeam, resolveDeviceBaseFromLocation } from "../www/src/seam/device";
+import {
+	BrowserDeviceSeam, isHostedMixedContent, normalizeDeviceBase, resolveDeviceBaseFromLocation, safeRecoveryHref,
+} from "../www/src/seam/device";
 
 function fixtureText( name: string ): string {
 	const url = new URL( `./fixtures/api/${ name }.fixture.json`, import.meta.url );
 	return readFileSync( fileURLToPath( url ), "utf8" );
 }
 
-/** Build a fetch mock that routes by path to the fixtures + an /sp auth result. */
+/** Build a fetch mock that routes by path and returns `/jo` auth fallbacks. */
 function mockFetch( spResult = 0 ): typeof fetch {
 	return vi.fn( async ( input: RequestInfo | URL ) => {
 		const url = String( input );
 		const body =
 			url.includes( "/jc" ) ? fixtureText( "jc" ) :
+			url.includes( "/jo" ) && url.includes( "pw=" ) && spResult > 1 ? JSON.stringify( { fwv: 221 } ) :
 			url.includes( "/jo" ) ? fixtureText( "jo" ) :
-			url.includes( "/sp" ) ? JSON.stringify( { result: spResult } ) :
 			"null";
 		return { ok: true, status: 200, statusText: "OK", json: async () => JSON.parse( body ) } as Response;
 	} ) as unknown as typeof fetch;
@@ -50,17 +52,17 @@ describe( "seam spike: LAN status pipeline", () => {
 		expect( html ).toContain( "Enabled" );       // jc.en = 1
 	} );
 
-	it( "uses md5(pw) auth for fwv>=213 and the /sp check", async () => {
+	it( "uses md5(pw) auth against /jo", async () => {
 		const f = mockFetch( 0 );
 		globalThis.fetch = f;
 		await bootStatusSpike( { baseUrl: "http://192.168.1.50/", password: "secret", md5 } );
 		const calls = ( f as unknown as { mock: { calls: unknown[][] } } ).mock.calls.map( ( c ) => String( c[ 0 ] ) );
-		expect( calls.some( ( u ) => u.includes( "/sp?pw=hash_secret" ) ) ).toBe( true ); // hashed
+		expect( calls.some( ( u ) => u.includes( "/jo?pw=hash_secret" ) ) ).toBe( true ); // hashed
 		expect( calls.some( ( u ) => u.includes( "/jc" ) && u.includes( "pw=hash_secret" ) ) ).toBe( true );
 	} );
 
-	it( "fails closed when /sp rejects the password", async () => {
-		globalThis.fetch = mockFetch( 2 ); // result>1 = invalid
+	it( "fails closed when /jo returns the auth-failure shape", async () => {
+		globalThis.fetch = mockFetch( 2 );
 		await expect(
 			bootStatusSpike( { baseUrl: "http://192.168.1.50/", password: "wrong", md5 } )
 		).rejects.toThrow( /authentication failed/ );
@@ -91,14 +93,22 @@ describe( "seam spike: OTC remote path is uniform with LAN", () => {
 } );
 
 describe( "device base resolution (home.js parity)", () => {
-	it( "extracts the origin from a location href", () => {
+	it( "preserves injected LAN and OTC path bases", () => {
 		expect( resolveDeviceBaseFromLocation( "http://192.168.1.50/index.html?x=1" ) ).toBe( "http://192.168.1.50/" );
-		expect( resolveDeviceBaseFromLocation( "https://cloud.openthings.io/forward/v1/T/" ) ).toBe( "https://cloud.openthings.io/" );
+		expect( resolveDeviceBaseFromLocation( "https://cloud.openthings.io/forward/v1/T/" ) ).toBe( "https://cloud.openthings.io/forward/v1/T/" );
+		expect( resolveDeviceBaseFromLocation( "https://cloud.openthings.io/forward/v1/T" ) ).toBe( "https://cloud.openthings.io/forward/v1/T/" );
+		expect( normalizeDeviceBase( "https://cloud.openthings.io/forward/v1/T" ) ).toBe( "https://cloud.openthings.io/forward/v1/T/" );
+		expect( isHostedMixedContent( "https://app.example/", "http://controller/" ) ).toBe( true );
 	} );
 
 	it( "buildUrl appends the hashed pw param", () => {
 		const seam = new BrowserDeviceSeam( { baseUrl: "http://d/", pwHash: "abc" } );
 		expect( seam.buildUrl( "jc" ) ).toBe( "http://d/jc?pw=abc" );
 		expect( seam.buildUrl( "jl?type=2" ) ).toBe( "http://d/jl?type=2&pw=abc" );
+	} );
+
+	it( "never creates a rendered recovery URL containing an OTC token", () => {
+		expect( safeRecoveryHref( "https://cloud.openthings.io/forward/v1/DEVICETOKEN/" ) ).toBeUndefined();
+		expect( safeRecoveryHref( "http://controller/" ) ).toBe( "http://controller/su" );
 	} );
 } );

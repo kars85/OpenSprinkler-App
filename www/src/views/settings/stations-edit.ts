@@ -4,9 +4,9 @@
  * (per-board bytes via setStationBit, names, and g<sid> groups on fw220+).
  */
 import type { JcResponse, JnResponse } from "../../api/types";
-import { textField, checkboxField, selectField, toInt, type SelectOption } from "../../ui/form";
+import { textField, checkboxField, selectField, type SelectOption } from "../../ui/form";
 import { esc, infoNote } from "../../ui/help";
-import { setStationBit, type StationConfigInput } from "../../api/encode";
+import { inputNumber, setStationBit, validateFirmwareString, ValidationError, type StationConfigInput } from "../../api/encode";
 
 export type FormValues = Record<string, string | boolean >;
 
@@ -49,10 +49,17 @@ export function buildStationConfig( v: FormValues, count: number, fwv: number ):
 	const groups: Record<number, number> = {};
 	for ( let sid = 0; sid < count; sid++ ) {
 		const nm = v[ `name_${ sid }` ];
-		if ( typeof nm === "string" ) names[ sid ] = nm;
+		if ( typeof nm === "string" ) {
+			if ( nm.trim() === "" ) throw new ValidationError( `name_${ sid }`, "Enter a station name." );
+			names[ sid ] = validateFirmwareString( nm, `name_${ sid }`, true, 33 );
+		}
 		disabled = setStationBit( disabled, sid, !!v[ `dis_${ sid }` ] );
 		ignoreRain = setStationBit( ignoreRain, sid, !!v[ `rain_${ sid }` ] );
-		if ( fwv >= 220 ) groups[ sid ] = toInt( v[ `grp_${ sid }` ], 0 );
+		if ( fwv >= 220 ) {
+			const group = inputNumber( v[ `grp_${ sid }` ], `grp_${ sid }`, 0, 255 );
+			if ( ![ 0, 1, 2, 3, 255 ].includes( group ) ) throw new ValidationError( `grp_${ sid }`, "Choose a valid station group." );
+			groups[ sid ] = group;
+		}
 	}
 	const cfg: StationConfigInput = { fwv, names, disabled, ignoreRain };
 	if ( fwv >= 220 ) cfg.groups = groups;

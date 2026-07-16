@@ -84,6 +84,16 @@ export function decodeEncodedDate( enc: number ): string {
 
 // ---- station ----------------------------------------------------------------
 
+/** Convert `/js.sn` (one entry per station) to `/jc.sbits` board bytes. */
+export function stationStatusBits( status: number[] ): number[] {
+	const bits: number[] = [];
+	status.forEach( ( on, sid ) => {
+		const board = sid >> 3;
+		bits[ board ] = ( bits[ board ] ?? 0 ) | ( on ? 1 << ( sid & 7 ) : 0 );
+	} );
+	return bits;
+}
+
 export function decodeStationState( jc: JcResponse, jn: JnResponse, index: number ): StationState {
 	const board = index >> 3, bit = index & 0x07;
 	const bitOf = ( arr: number[] | undefined ): boolean =>

@@ -15,6 +15,8 @@ import { describe, it, expect } from "vitest";
 import {
 	parseJc, parseJo, parseJn, parseJe, parseJp, parseJl, parseJs, parseJa,
 	deriveCapabilities, isStationLogRow, isPreAuthFallback, ApiError,
+	requirePreAuthFloor, requireSupportedAll, requireSupportedOptions,
+	AuthenticationRequiredError, OsApiClient, UnsupportedControllerError,
 } from "../www/src/api/client";
 
 function fixture( name: string ): unknown {
@@ -57,6 +59,17 @@ describe( "/jo options", () => {
 	} );
 	it( "ms is a number array", () => {
 		expect( Array.isArray( jo.ms ) ).toBe( true );
+	} );
+	it( "rejects string/old firmware before auth and gates the full fork response after auth", () => {
+		expect( () => requirePreAuthFloor( { fwv: "221" } ) ).toThrow( UnsupportedControllerError );
+		expect( () => requirePreAuthFloor( { fwv: 220 } ) ).toThrow( UnsupportedControllerError );
+		expect( requirePreAuthFloor( { fwv: 221 } ) ).toBe( 221 );
+		expect( () => requireSupportedOptions( { fwv: 221 } ) ).toThrow( AuthenticationRequiredError );
+		expect( requireSupportedOptions( jo ) ).toBe( jo );
+		expect( () => requireSupportedOptions( { ...jo, fwm: 3 } ) ).toThrow( UnsupportedControllerError );
+		expect( () => requireSupportedOptions( { ...jo, fwm: 4.1 } ) ).toThrow( UnsupportedControllerError );
+		expect( () => requireSupportedOptions( { ...jo, fwv: 222 } ) ).toThrow( UnsupportedControllerError );
+		expect( () => requireSupportedOptions( { ...jo, fwf: "official" } ) ).toThrow( UnsupportedControllerError );
 	} );
 } );
 
@@ -114,6 +127,18 @@ describe( "/js status", () => {
 	} );
 } );
 
+describe( "authenticated reads", () => {
+	it( "classifies firmware result=2 as authentication required before endpoint parsing", async () => {
+		const api = new OsApiClient( {
+			config: { baseUrl: "http://controller/" },
+			requestJson: async () => ( { result: 2 } ),
+			runCommand: async () => ( { result: 1 } ),
+		} );
+		await expect( api.getControllerStatus() ).rejects.toBeInstanceOf( AuthenticationRequiredError );
+		await expect( api.getStatus() ).rejects.toBeInstanceOf( AuthenticationRequiredError );
+	} );
+} );
+
 describe( "/ja aggregate", () => {
 	it( "parses the five nested responses and the auth-failure fallback", () => {
 		const aggregate = parseJa( {
@@ -122,6 +147,20 @@ describe( "/ja aggregate", () => {
 		} );
 		expect( "settings" in aggregate && aggregate.options.fwv ).toBe( 221 );
 		expect( parseJa( { fwv: 221 } ) ).toEqual( { fwv: 221 } );
+	} );
+	it( "uses the same pre-auth/auth/post-auth gate order", () => {
+		const aggregate = parseJa( {
+			settings: fixture( "jc" ), programs: fixture( "jp" ), options: fixture( "jo" ),
+			status: fixture( "js" ), stations: fixture( "jn" ),
+		} );
+		expect( requireSupportedAll( aggregate ) ).toBe( aggregate );
+		expect( () => requireSupportedAll( { fwv: 221 } ) ).toThrow( AuthenticationRequiredError );
+		expect( () => requireSupportedAll( { fwv: 220 } ) ).toThrow( UnsupportedControllerError );
+		expect( () => parseJa( { fwv: "221" } ) ).toThrow( UnsupportedControllerError );
+		if ( !( "fwv" in aggregate ) ) {
+			expect( () => requireSupportedAll( { ...aggregate, options: { ...aggregate.options, fwf: "official" } } ) )
+				.toThrow( UnsupportedControllerError );
+		}
 	} );
 } );
 

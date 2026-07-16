@@ -1,29 +1,40 @@
 /**
- * Phase-1 production app entry (DRAFT). Boots the dashboard against a REAL device (no mock) — now
- * with write/control + settings via the shared host controller (views/host.ts). Still gated behind
- * the md5 login for password-protected devices; the home.js-wiring + rollout remain (PRD §7).
+ * Phase-1 production app entry. Boots the read-only dashboard against a real device through the
+ * shared host controller. Password-protected devices use hash-only authentication.
  *
  * Device base resolution:
  *   - `?base=http://192.168.1.50/`  → explicit device (LAN) or an OTC forward URL (remote)
- *   - otherwise `location.origin`   → when this build is eventually served from the device
+ *   - otherwise the full page URL path → preserves injected LAN and OTC forwarding bases
  */
 import "../www/src/ui/system.css";
-import { BrowserDeviceSeam, readFirmwareGlobals } from "../www/src/seam/device";
-import { OsApiClient } from "../www/src/api/client";
+import {
+	BrowserDeviceSeam, isHostedMixedContent, normalizeDeviceBase, readFirmwareGlobals, safeRecoveryHref,
+	resolveDeviceBaseFromLocation,
+} from "../www/src/seam/device";
+import {
+	AuthenticationRequiredError, isPreAuthFallback, OsApiClient, requirePreAuthFloor, requireSupportedOptions,
+	UnsupportedControllerError,
+} from "../www/src/api/client";
+import type { JoResponse } from "../www/src/api/types";
 import type { DashboardData } from "../www/src/views/dashboard";
-import { mountDashboard } from "../www/src/views/host";
+import { stationStatusBits } from "../www/src/api/decode";
+import { mountDashboard, renderLoadingShell } from "../www/src/views/host";
 import { runLogin } from "../www/src/auth/login";
-import { errorCard } from "../www/src/ui/help";
+import { errorCard, unsupportedCard } from "../www/src/ui/help";
 
 function qp( name: string ): string | undefined {
 	return new URLSearchParams( location.search ).get( name ) ?? undefined;
 }
 
 const { ver, ipas } = readFirmwareGlobals();
-const baseUrl = qp( "base" ) || location.origin + "/";
+const explicitBase = qp( "base" );
+const baseUrl = explicitBase
+	? normalizeDeviceBase( explicitBase )
+	: ver !== undefined ? resolveDeviceBaseFromLocation( location.href ) : "";
 let pwHash = qp( "pwhash" );
 
 const mount = document.getElementById( "app" ) as HTMLElement;
+mount.innerHTML = renderLoadingShell();
 
 /** A minimal toast banner appended to the body for action/settings feedback (live region). */
 const toastEl = document.createElement( "div" );
@@ -40,24 +51,57 @@ function toast( message: string, isError = false ): void {
 }
 
 async function boot(): Promise<void> {
-	if ( ipas !== 1 && !pwHash ) {
-		pwHash = await runLogin( mount, baseUrl, ver ?? 0 );
+	if ( !baseUrl ) throw new UnsupportedControllerError( "A LAN or OTC device base is required." );
+	if ( isHostedMixedContent( location.href, baseUrl ) ) {
+		throw new UnsupportedControllerError( "A hosted HTTPS app cannot connect directly to a plain-HTTP LAN controller. Use the device-loaded UI or OTC." );
 	}
-	const api = new OsApiClient( new BrowserDeviceSeam( { baseUrl, ver, ipas, pwHash } ) );
+
+	const preAuthApi = new OsApiClient( new BrowserDeviceSeam( { baseUrl } ) );
+	let preAuthOptions: JoResponse | undefined;
+	let fwv: number;
+	if ( ver === undefined ) {
+		const probeRaw = await preAuthApi.probeOptions();
+		fwv = requirePreAuthFloor( probeRaw );
+		const probe = probeRaw as Partial<JoResponse>;
+		if ( !isPreAuthFallback( probe ) ) preAuthOptions = requireSupportedOptions( probe );
+	} else {
+		fwv = requirePreAuthFloor( ver );
+	}
+	if ( ipas !== 1 && !pwHash && !preAuthOptions ) {
+		pwHash = await runLogin( mount, baseUrl );
+	}
+	let api = new OsApiClient( new BrowserDeviceSeam( { baseUrl, ver: fwv, ipas, pwHash } ) );
+	try {
+		requireSupportedOptions( preAuthOptions ?? await api.getOptions() );
+	} catch ( e ) {
+		if ( !( e instanceof AuthenticationRequiredError ) || ipas === 1 ) throw e;
+		pwHash = await runLogin( mount, baseUrl );
+		api = new OsApiClient( new BrowserDeviceSeam( { baseUrl, ver: fwv, ipas, pwHash } ) );
+		requireSupportedOptions( await api.getOptions() );
+	}
 	const load = async (): Promise<DashboardData> => {
-		const [ jc, jo, jn, jp, jl ] = await Promise.all( [
-			api.getControllerStatus(), api.getOptions(), api.getStations(), api.getPrograms(), api.getLogs(),
+		const [ jc, jo, jn, je, jp, jl ] = await Promise.all( [
+			api.getControllerStatus(), api.getOptions().then( requireSupportedOptions ), api.getStations(), api.getSpecialStations(), api.getPrograms(), api.getLogs(),
 		] );
-		return { jc, jo, jn, jp, jl };
+		return { jc, jo, jn, je, jp, jl };
+	};
+	const loadRuntime = async ( current: DashboardData, cheap: boolean ): Promise<DashboardData> => {
+		if ( cheap ) {
+			const js = await api.getStatus();
+			return { ...current, jc: { ...current.jc, sbits: stationStatusBits( js.sn ) } };
+		}
+		return { ...current, jc: await api.getControllerStatus() };
 	};
 	mountDashboard( {
-		mount, api, load, toast,
+		mount, api, load, loadRuntime, toast,
+		reauthenticate: () => location.reload(),
+		recoveryHref: safeRecoveryHref( baseUrl ),
 		ctx: { prompt: ( m, d ) => window.prompt( m, d ), confirm: ( m ) => window.confirm( m ) },
 	} );
 }
 
 boot().catch( ( e ) => {
-	mount.innerHTML = errorCard( String( e ) );
+	mount.innerHTML = e instanceof UnsupportedControllerError ? unsupportedCard( e.message ) : errorCard( String( e ) );
 	// At boot failure the host click-listener isn't mounted yet, so wire retry to a full reload.
 	mount.querySelector<HTMLButtonElement>( '[data-action="retry"]' )?.addEventListener( "click", () => location.reload() );
 } );

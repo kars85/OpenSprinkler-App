@@ -7,6 +7,7 @@
  */
 import type { OsApiClient } from "../api/client";
 import type { JpResponse } from "../api/types";
+import { inputNumber } from "../api/encode";
 
 export interface ActionContext {
 	prompt( message: string, def?: string ): string | null;
@@ -18,8 +19,8 @@ export type ActionDataset = Record<string, string | undefined>;
 export async function dispatchAction(
 	api: OsApiClient, data: ActionData, ds: ActionDataset, ctx: ActionContext,
 ): Promise<string | null> {
-	const sid = ds.sid !== undefined ? parseInt( ds.sid, 10 ) : -1;
-	const pid = ds.pid !== undefined ? parseInt( ds.pid, 10 ) : -1;
+	const sid = ds.sid !== undefined ? inputNumber( ds.sid, "station", 0, 199 ) : -1;
+	const pid = ds.pid !== undefined ? inputNumber( ds.pid, "program", 0, 255 ) : -1;
 
 	switch ( ds.action ) {
 		case "stop-all":
@@ -33,8 +34,8 @@ export async function dispatchAction(
 		case "rain-delay": {
 			const h = ctx.prompt( "Rain delay in hours (0 to cancel):", "6" );
 			if ( h === null ) return null;
-			const hours = parseFloat( h );
-			await api.setRainDelayHours( Number.isFinite( hours ) && hours > 0 ? hours : 0 );
+			const hours = inputNumber( h, "rainDelay", 0, 32767 );
+			await api.setRainDelayHours( hours );
 			return hours > 0 ? `Rain delay set to ${ hours }h.` : "Rain delay cancelled.";
 		}
 		case "cancel-rain":
@@ -50,8 +51,7 @@ export async function dispatchAction(
 		case "station-start": {
 			const m = ctx.prompt( "Run this station for how many minutes?", "5" );
 			if ( m === null ) return null;
-			const mins = parseFloat( m );
-			if ( !Number.isFinite( mins ) || mins <= 0 ) return null;
+			const mins = inputNumber( m, "duration", 1 / 60, 1440, false );
 			await api.startStation( sid, Math.round( mins * 60 ) );
 			return `Station ${ sid + 1 } started for ${ mins } min.`;
 		}
@@ -68,7 +68,7 @@ export async function dispatchAction(
 			const p = data.jp.pd[ pid ];
 			if ( !p ) return null;
 			const enable = ds.enabled !== "1";
-			await api.setProgramEnabled( pid, p, enable );
+			await api.setProgramEnabled( pid, enable );
 			return enable ? "Program enabled." : "Program disabled.";
 		}
 		case "program-delete": {

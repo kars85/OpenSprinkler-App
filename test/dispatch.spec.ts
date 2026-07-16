@@ -21,7 +21,7 @@ class MockApi {
 	clearOvercurrent() { this.calls.push( "clearOcs" ); return Promise.resolve( {} ); }
 	deleteProgram( pid: number ) { this.calls.push( `delete:${ pid }` ); return Promise.resolve( {} ); }
 	runProgramNow( p: OSProgram ) { this.calls.push( `run:${ p[ 5 ] }` ); return Promise.resolve( {} ); }
-	setProgramEnabled( pid: number, _p: OSProgram, e: boolean ) { this.calls.push( `progEnable:${ pid }:${ e }` ); return Promise.resolve( {} ); }
+	setProgramEnabled( pid: number, e: boolean ) { this.calls.push( `progEnable:${ pid }:${ e }` ); return Promise.resolve( {} ); }
 }
 
 const program: OSProgram = [ 1, 0b10101, 0, [ 360, -1, -1, -1 ], [ 600 ], "Morning", [ 0, 0, 0 ] ];
@@ -59,12 +59,12 @@ describe( "dispatchAction", () => {
 		expect( api.calls ).toEqual( [ "stopStation:0" ] );
 	} );
 
-	it( "rain-delay prompts hours; 0 cancels; non-numeric falls back to 0", async () => {
+	it( "rain-delay prompts hours; 0 cancels; invalid input sends nothing", async () => {
 		const api = new MockApi();
 		await run( api, { action: "rain-delay" }, ctx( "3" ) );
 		await run( api, { action: "rain-delay" }, ctx( "0" ) );
-		await run( api, { action: "rain-delay" }, ctx( "nope" ) );
-		expect( api.calls ).toEqual( [ "rain:3", "rain:0", "rain:0" ] );
+		await expect( run( api, { action: "rain-delay" }, ctx( "nope" ) ) ).rejects.toThrow( /whole number/ );
+		expect( api.calls ).toEqual( [ "rain:3", "rain:0" ] );
 	} );
 
 	it( "cancel-rain calls cancelRainDelay", async () => {

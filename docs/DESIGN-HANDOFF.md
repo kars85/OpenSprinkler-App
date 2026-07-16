@@ -63,7 +63,7 @@ That gzip number is the UX-SPEC §14 baseline ("measure the production Vite gzip
 
 ### Environment gotchas you will hit
 
-- **`vite` is not a declared dependency.** It resolves only transitively through `vitest`. `npm run build:app`, `npm run demo`, and `npm run demo:build` all work today but are one `vitest` major bump from breaking. Consider adding `vite` to `devDependencies` explicitly.
+- **`vite` is pinned directly.** Phase 1 declares `vite` in `devDependencies`; clean CI resolves that pin before running the App/demo builds.
 - **`npm install` on Windows** rewrites `package-lock.json`, stripping `libc` fields from optional platform deps. Unrelated churn — revert it (`git checkout package-lock.json`) rather than committing it.
 
 ## 3. Critique findings — `app/index.html`, 19/40 (Poor)

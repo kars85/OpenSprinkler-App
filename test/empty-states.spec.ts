@@ -25,16 +25,19 @@ describe( "friendly empty-states", () => {
 		const emptyJn = parseJn( { ...( fx( "jn" ) as object ), snames: [], stn_dis: [] } );
 		const html = renderStations( jc, emptyJn );
 		expect( html ).toContain( "No stations configured" );
+		expect( html ).toContain( 'data-target="Stations"' );
 	} );
 	it( "programs: guidance when none are defined", () => {
 		const emptyJp = parseJp( { ...( fx( "jp" ) as object ), pd: [], nprogs: 0 } );
 		const html = renderPrograms( emptyJp, jn );
 		expect( html ).toContain( "No programs yet" );
 		expect( html ).toContain( "class=\"empty-state\"" );
+		expect( html ).toContain( "Draft a program" );
 	} );
 	it( "logs: guidance when the history is empty", () => {
 		const html = renderLogs( parseJl( [] ), jn );
 		expect( html ).toContain( "No log entries yet" );
+		expect( html ).toContain( 'data-action="retry"' );
 	} );
 } );
 

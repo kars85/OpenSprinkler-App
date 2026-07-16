@@ -3,8 +3,7 @@ name: Unit Tests
 on:
   push:
     branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+  pull_request: {}
 
 jobs:
   validate_tests:
@@ -51,7 +50,11 @@ jobs:
       - run: npx tsc --noEmit
       - run: npx vitest run
       - run: npm run test:server
-      - run: npx vite build app
+      - name: Build and verify the firmware bootstrap artifact
+        run: |
+          npm run build:app
+          test -f dist/home.js
+          cmp -s app/public/home.js dist/home.js
 
       - name: Record and guard production bundle size
         shell: bash
@@ -61,7 +64,7 @@ jobs:
           echo "app.js=${JS_BYTES} bytes; app.css.gzip=${CSS_GZIP_BYTES} bytes; baseline=3319; max=3650"
           test "$CSS_GZIP_BYTES" -le 3650
 
-      - run: npx vite build demo
+      - run: npm run demo:build
 
   axis_d_demo:
     name: App ↔ Firmware DEMO contract
