@@ -1,14 +1,14 @@
-# API fixtures — provisional, DERIVED-FROM-SOURCE
+# API fixtures — curated, derived from source
 
 These JSON fixtures were reconstructed from the OpenSprinkler-Firmware **emit code**
 (`opensprinkler_server.cpp`), not captured from a live device. They model a
 **1-board / 8-station / 1-program** controller and pin the *shapes* the typed client
 (`www/src/api/`) depends on.
 
-> ⚠️ **Replace each with a real capture before locking the contract.** Capture from a
-> live device and the DEMO build for every target firmware version (see
-> `docs/PHASE-1-MODERNIZATION-PRD.md` §3), keeping one fixture per `fwv` under
-> `test/fixtures/api/<fwv>/`.
+These fixtures are deterministic parser examples and are never overwritten by live capture.
+`npm run capture` writes sanitized hardware evidence under
+`test/fixtures/live/<fwv*10+fwm>/`; `npm run verify:live` runs the same parsers against the
+controller. Firmware DEMO contract coverage runs separately in CI.
 
 Known shape notes baked into these fixtures (verified against firmware source):
 - `/jc.lrun` is `[station, program, duration, endtime]` — **station first**.

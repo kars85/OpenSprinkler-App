@@ -11,17 +11,17 @@ describe( "createHttpApp — CORS covers static assets (cross-origin ESM bootstr
 	const app = createHttpApp( new Hono() );   // empty api; dist may be absent — the cors middleware still runs
 
 	it( "sets Access-Control-Allow-Origin on the ESM bundle path", async () => {
-		const res = await app.request( "/assets/app.js", { headers: { Origin: "http://10.10.100.246" } } );
+		const res = await app.request( "/assets/app.js", { headers: { Origin: "http://controller.local" } } );
 		expect( res.headers.get( "access-control-allow-origin" ) ).toBe( "*" );
 	} );
 
 	it( "sets Access-Control-Allow-Origin on the home.js bootstrap path", async () => {
-		const res = await app.request( "/home.js", { headers: { Origin: "http://10.10.100.246" } } );
+		const res = await app.request( "/home.js", { headers: { Origin: "http://controller.local" } } );
 		expect( res.headers.get( "access-control-allow-origin" ) ).toBe( "*" );
 	} );
 
 	it( "still sets CORS on the /api surface", async () => {
-		const res = await app.request( "/api/anything", { headers: { Origin: "http://10.10.100.246" } } );
+		const res = await app.request( "/api/anything", { headers: { Origin: "http://controller.local" } } );
 		expect( res.headers.get( "access-control-allow-origin" ) ).toBe( "*" );
 	} );
 } );

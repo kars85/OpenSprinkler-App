@@ -7,13 +7,13 @@ This document is the app-side counterpart to the firmware-owned API reference in
 
 This axis is **axis D** in `OpenSprinkler-Firmware/docs/ecosystem.md`.
 
-> **Note the inverted direction versus the weather axis.** On Weather↔Firmware the *producer* (weather) is canonical and the firmware adapts. Here the *producer* (firmware) is canonical and the app adapts. The app carries the compatibility burden: it is expected to run against every firmware from 1.8.3 to current.
+> **Note the inverted direction versus the weather axis.** On Weather↔Firmware the *producer* (weather) is canonical and the firmware adapts. Here the *producer* (firmware) is canonical and the app adapts. The frozen legacy App retains its broad compatibility policy; the modern fork UI deliberately supports only the authenticated `2214 + kars85` floor below.
 
 ## Scope
 
-The app is not a general client of a versioned API. It reads firmware JSON responses by direct key access and gates ~100 UI features on the firmware version integer. There is **no CI guard on this axis** (unlike Weather↔Firmware's `test/firmware-contract.spec.ts`) and no negotiated capability handshake — `fwv` *is* the handshake.
+The app is not a general client of a versioned API. It reads firmware JSON responses by direct key access. The frozen legacy UI gates ~100 features on version helpers; the modern UI uses a pre-auth floor followed by authenticated `fwv`, `fwm`, `fwf`, and field-presence checks. The Axis-D CI job starts the native Firmware DEMO, exercises success shapes and mutations, and pins the `/jo`/`/ja` auth-failure contract.
 
-Deployment makes both directions live simultaneously: the app is served to controllers by pointing the firmware's Javascript URL at `https://ui.opensprinkler.com/js` via `/su` (`README.md:59-68`, firmware ≥2.0.3). A published app update reaches old controllers with no firmware flash, and old app builds keep hitting new controllers. **Neither side may assume the other was updated.**
+Deployment makes both directions live simultaneously: authenticated `/cu` persists `jsp`; unauthenticated `/su` is the recovery/settings page. A published app update reaches every controller pointing at that host with no firmware flash, and old app builds keep hitting new controllers. **Neither side may assume the other was updated.**
 
 ## Hard Constraints On The Producer
 
@@ -22,24 +22,35 @@ Deployment makes both directions live simultaneously: the app is served to contr
 
 2. **`/jo` and `/ja` must keep emitting `fwv` when the password check fails.**
    `opensprinkler_server.cpp:2449-2455` special-cases these two endpoints: on `check_password()==false` the firmware returns **HTTP 200** with `{"fwv":<n>}` (`iopt_json_names+0` is `fwv`, `OpenSprinkler.cpp:118-119`) instead of an auth error. This is not an information leak to be cleaned up — it is the app's **auth bootstrap**, and removing it breaks adding any site. See "Auth bootstrap" below for the exact dependency.
-   `/su` bypasses password checks entirely (`:2445-2448`); that is what makes UI injection work.
+   `/su` bypasses password checks entirely (`:2445-2448`) so recovery remains reachable; authenticated `/cu` is the only path that persists `jsp`.
 
-3. **`fwv` must be bumped for any new field or behavior the app is expected to use.**
-   The app has no other way to detect a capability. Shipping a field without a version bump leaves it permanently invisible to the app's gating path. See "Version gating" below.
+3. **Never bump `fwv` for a fork feature.**
+   A changed `OS_FW_VERSION` can trigger `factory_reset()` and rewrite device configuration. Keep the fork baseline at `fwv=221`, `fwm=4`; the first firmware-visible addition uses `fwm=5` and is consumed only when `fwf` starts with `kars85.`, combined version is at least `2215`, and the field is present.
 
 4. **`fwv` and `fwm` must remain integers with the documented arithmetic.**
    The app computes 4-digit checks as `fwv * 10 + fwm` (`www/js/modules/firmware.js:164-170`) and formats display as `(fwv/100>>0) + "." + ((fwv/10>>0)%10) + "." + (fwv%10)` (`firmware.js:261`). Both are iopts in `/jo` (`OpenSprinkler.cpp:118` for `fwv`, `:159` for `fwm`). A string `fwv` is interpreted as OSPi (see below), not as a version.
 
-5. **Fork builds must not repurpose `fwv`/`fwm` for fork identity.**
-   The kars85 fork emits its build tag as the separate read-only `fwf` string in `/jo` (`opensprinkler_server.cpp:1122-1125`, `defines.h:47-50`); the app renders it as a display-only suffix and never gates on it (`firmware.js:272-277`). `fwv`/`fwm` continue to track upstream exactly. Any fork that bumps `fwv` to mark itself will mis-trigger every gate below.
+5. **Use each version signal for one job.**
+   `fwv` is the upstream/storage epoch, `fwf` is fork identity/build display, and `fwm` is the reset-free capability level. The kars85 fork emits `fwf` as read-only `/jo` data (`opensprinkler_server.cpp:1122-1125`, `defines.h:47-50`). Never parse the `fwf` counter as a capability and never use `fwv` as fork identity.
 
 ## Version Gating
+
+### Modern fork floor
+
+1. Probe unauthenticated `/jo`. A nonnumeric `fwv` or numeric value below `221` is Unsupported; do not send credentials.
+2. For numeric `221+`, send only md5-hash authentication. A `fwv`-only response is Authentication required/failed, never Unsupported.
+3. After a full `/jo` response, require `fwv === 221`, `fwv * 10 + fwm >= 2214`, `fwf` beginning with `kars85.`, and every field the current feature consumes.
+4. Future firmware-visible features additionally require combined version `>=2215` and their field presence. Do not add a cleartext fallback or bump `fwv`.
+
+Every Unsupported screen points to the frozen legacy UI or the firmware upgrade path. Official builds, OSPi's string `fwv`, and unapproved future storage epochs are outside the modern support matrix.
+
+### Frozen legacy gates
 
 `OSApp.Firmware.checkOSVersion( n )` (`www/js/modules/firmware.js:158-182`) is the single detection primitive. Behavior worth knowing:
 
 - **Empty controller object returns `false`** (`firmware.js:159-161`) — gates fail closed before the first `/jo` lands.
 - **3-digit checks compare `fwv` alone; 4-digit checks (`>= 1000`) fold in the minor version** as `fwv * 10 + fwm`, returning `false` if `fwm` is `NaN` (`firmware.js:164-170`). So `checkOSVersion( 2214 )` means firmware 2.2.1(4) — current `defines.h` is `OS_FW_VERSION 221` / `OS_FW_MINOR 4`.
-- **OSPi always returns `false`** (`firmware.js:172-173`). `isOSPi()` triggers on a *string* `fwv` matching `/ospi/i` (`firmware.js:184-193`). Consequence: **every numeric gate is off for OSPi**, so OSPi feature support is expressed by data-presence checks instead (see below).
+- **OSPi always returns `false`** (`firmware.js:172-173`). `isOSPi()` triggers on a *string* `fwv` matching `/ospi/i` (`firmware.js:184-193`). Frozen legacy features therefore use data-presence checks where needed; the modern fork UI does not support OSPi.
 - Comparison is digit-array based, not numeric (`versionCompare`, `firmware.js:195+`).
 
 Live gate tiers, for reference when deciding whether a change needs a bump:
@@ -77,11 +88,15 @@ Live gate tiers, for reference when deciding whether a change needs a bump:
 - **Data-presence checks** — work on OSPi, where numeric gates are dead: `master` (`mas`/`mas2` iopts), `ignoreRain` / `ignoreSensor` / `actRelay` / `disabled` / `special` (typed keys under `controller.stations`), `pausing` (`settings.pq !== undefined`), `groups` (option count `>= 4`).
 - **Version-backed checks** — `dateRange` (220), `changePause` (2211), `verifyWeatherAPIKey` (219 + `uwt` + `wto`), `restrictions` (2213 + `wto`).
 
-**Prefer adding a data-presence check here** over a bare `fwv` gate in a UI module: it survives OSPi and does not need a version bump to work.
+These helpers document frozen legacy behavior. New modern fork capability checks use the layered policy above.
 
 ## Auth Bootstrap
 
-The add-site probe is where the app and firmware negotiate password format, and it is subtle enough to state exactly (`www/js/modules/sites.js:814-815`, `:671-696`).
+The modern flow probes `/jo` without credentials, rejects values below `221`, and hash-authenticates plausible `221+` devices. It never sends cleartext. The firmware's HTTP-200 `{"fwv":N}` failure response remains load-bearing because it distinguishes Authentication from Unsupported without exposing full options.
+
+### Frozen legacy cleartext fallback
+
+The add-site flow below exists only in the frozen legacy UI (`www/js/modules/sites.js:814-815`, `:671-696`). It must remain compatible during rollback, but it is not the modern authentication policy.
 
 The probe **always** sends `/jo?pw=md5(<password>)` — the app does not yet know the firmware version, so it cannot know whether to hash. Two outcomes:
 
@@ -120,15 +135,15 @@ Read endpoints (JSON field names are part of the contract — the app reads keys
 
 | Endpoint | Purpose | App call site |
 |---|---|---|
-| `/jo` | options (carries `fwv`, `fwm`, `wl`, `hwv`, `wsp`, `fwf`) | `sites.js:1169`, `stations.js:206` |
-| `/jc` | controller status (`wtdata`, `wterr`, `wtrestr`, `otc`/`otcs`) | `sites.js:1243`, `network.js:845` |
+| `/jo` | options (`fwv`, `fwm`, `wl`, `uwt`, `hwv`, `fwf`) | `sites.js:1169`, `stations.js:206` |
+| `/jc` | controller status and string/config data (`jsp`, `wsp`, `wto`, `wtdata`, `wterr`, `wtrestr`, `otc`/`otcs`) | `sites.js:1243`, `network.js:845` |
 | `/js` | station status | `sites.js:1194` |
 | `/jn` | stations | `sites.js:1126` |
 | `/jp` | programs | `sites.js:1093` |
 | `/ja` | all-in-one (gated 216) | `sites.js:1028` |
 | `/je` | special stations | `sites.js:1347` |
 | `/jl` | logs | `logs.js:546-555` |
-| `/su` | script URL view (**no auth**) | firmware-served UI injection |
+| `/su` | recovery/settings page (**no auth**) | firmware-served recovery |
 
 Change endpoints (`cv|cs|cr|cp|uwa|dp|co|cl|cu|up|cm` are the set `sendToOS` routes to the "change" AJAX queue and error-reports on — `firmware.js:52`):
 
@@ -136,9 +151,9 @@ Change endpoints (`cv|cs|cr|cp|uwa|dp|co|cl|cu|up|cm` are the set `sendToOS` rou
 
 Sensor endpoints (`/se`, `/sl`, `/sh`, `/sf`, `/sa`, `/sc`, `/sb`, `/sn`, `/so`) are called from `www/js/modules/analog.js`.
 
-## What The App Does Not Couple To
+## Other Direct Dependencies
 
-- **The weather service.** The app never contacts `OpenSprinkler-Weather`. It reads the firmware's weather *settings* (`wsp`, `wto`) and *cached results* (`wtdata`, `wterr`, `wtrestr`) from `/jo` and `/jc`; the firmware alone fetches from `wsp`. **One exception:** `www/js/modules/weather.js:477` hardcodes `https://api.weather.com/v2/pws/` to validate WeatherUnderground PWS keys client-side — a real, direct third-party dependency.
+- **Weather.** The legacy UI calls the configured `wsp` directly for `/weatherData` and `/baselineETo`, and calls `api.weather.com/v2/pws/` to validate Weather Underground data (`www/js/modules/weather.js:469-486`, `:559-593`, `:665-699`). It also reads options (`uwt`, `wl`) from `/jo` and cached Weather results (`wtdata`, `wterr`, `wtrestr`) from `/jc`. The modern UI must not add a direct Weather dependency; these legacy calls retire with the legacy surface.
 - **The OTF library.** The app compiles nothing from `OpenThings-Framework-Firmware-Library`. It couples to the same **OpenThings Cloud service**, routing through `https://cloud.openthings.io/forward/v1/<token>` in place of the controller IP (`firmware.js:56`, `sites.js:396`), with tokens matching `^OT[a-fA-F0-9]{30}$` (`dashboard.js:169`). Every endpoint above works through that prefix unchanged, which is why the URL shape is a contract in its own right (`OpenSprinkler-Firmware/docs/external-contracts.md`).
 
 ## Maintenance Contract
@@ -146,8 +161,8 @@ Sensor endpoints (`/se`, `/sl`, `/sh`, `/sf`, `/sa`, `/sc`, `/sb`, `/sn`, `/so`)
 **The firmware is canonical on this axis.** Before changing anything above:
 
 1. **Never renumber or reorder `_url_keys[]`.** Endpoint keys and JSON field names are append-only in practice — old app builds and old controllers coexist in the field in both directions.
-2. **Bump `fwv` (or `fwm`) when adding app-visible behavior**, and add the gate on the app side in `www/js/modules/supported.js` — preferring a data-presence check over a version check where the shape allows it, so OSPi is covered.
-3. **Before removing or renaming a field or endpoint, grep the app's call sites.** There is no CI guard to catch it; the failure mode is a silent `undefined` in a UI module, not a test failure.
+2. **Never bump `fwv` for a fork capability.** Bundle firmware-visible additions under `fwm=5`, require `kars85.` identity and field presence, and retain an absence fallback.
+3. **Before removing or renaming a field or endpoint, grep the App's call sites and extend the Axis-D contract test.** The typed test intentionally validates only fields the modern App consumes.
 4. **Treat `/jo`+`/ja` fwv-on-auth-failure and `/su`-without-auth as load-bearing**, not as security defects to be tidied.
 5. Update this doc and the firmware-side API reference together, and keep `OpenSprinkler-Firmware/docs/ecosystem.md` axis D in sync.
 

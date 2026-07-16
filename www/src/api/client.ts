@@ -11,8 +11,8 @@
  * (firmware) work — consume only what the firmware already emits.
  */
 import type {
-	JcResponse, JoResponse, JnResponse, JpResponse, JlResponse, JlRow,
-	JlStationRow, JsResponse, Capabilities, OSProgram,
+	JcResponse, JoResponse, JnResponse, JeResponse, JpResponse, JlResponse, JlRow,
+	JlStationRow, JsResponse, JaResponse, JoPreAuthFallback, Capabilities, OSProgram,
 } from "./types";
 import type { DeviceSeam } from "../seam/device";
 import {
@@ -96,6 +96,17 @@ export function parseJn( raw: unknown ): JnResponse {
 	return o as unknown as JnResponse;
 }
 
+export function parseJe( raw: unknown ): JeResponse {
+	if ( typeof raw !== "object" || raw === null || Array.isArray( raw ) ) throw new ApiError( "not an object", "/je", raw );
+	for ( const [ sid, value ] of Object.entries( raw ) ) {
+		if ( !/^\d+$/.test( sid ) || typeof value !== "object" || value === null ||
+			typeof ( value as Record<string, unknown> ).st !== "number" || typeof ( value as Record<string, unknown> ).sd !== "string" ) {
+			throw new ApiError( "malformed special-station entry", "/je", value );
+		}
+	}
+	return raw as JeResponse;
+}
+
 export function parseJp( raw: unknown ): JpResponse {
 	if ( typeof raw !== "object" || raw === null ) throw new ApiError( "not an object", "/jp", raw );
 	const o = raw as Record<string, unknown>;
@@ -118,6 +129,19 @@ export function parseJs( raw: unknown ): JsResponse {
 	requireArray( o, "sn", "/js" );
 	requireNumber( o, "nstations", "/js" );
 	return o as unknown as JsResponse;
+}
+
+export function parseJa( raw: unknown ): JaResponse | JoPreAuthFallback {
+	if ( typeof raw !== "object" || raw === null || Array.isArray( raw ) ) throw new ApiError( "not an object", "/ja", raw );
+	const data = raw as Record<string, unknown>;
+	if ( typeof data.fwv === "number" && Object.keys( data ).length <= 2 ) return { fwv: data.fwv };
+	return {
+		settings: parseJc( data.settings ),
+		programs: parseJp( data.programs ),
+		options: parseJo( data.options ),
+		status: parseJs( data.status ),
+		stations: parseJn( data.stations ),
+	};
 }
 
 /**
@@ -158,7 +182,9 @@ export class OsApiClient {
 	getControllerStatus(): Promise<JcResponse> { return this.get( "jc", parseJc ); }
 	getOptions(): Promise<JoResponse> { return this.get( "jo", parseJo ); }
 	getStations(): Promise<JnResponse> { return this.get( "jn", parseJn ); }
+	getSpecialStations(): Promise<JeResponse> { return this.get( "je", parseJe ); }
 	getPrograms(): Promise<JpResponse> { return this.get( "jp", parseJp ); }
+	getAll(): Promise<JaResponse | JoPreAuthFallback> { return this.get( "ja", parseJa ); }
 	/**
 	 * Fetch the log history. The firmware /jl REQUIRES a start/end epoch range — without it it returns
 	 * `{result:16}` (data missing), NOT an array (verified on real hardware) — so this defaults to the

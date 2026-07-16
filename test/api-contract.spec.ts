@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 
 import {
-	parseJc, parseJo, parseJn, parseJp, parseJl, parseJs,
+	parseJc, parseJo, parseJn, parseJe, parseJp, parseJl, parseJs, parseJa,
 	deriveCapabilities, isStationLogRow, isPreAuthFallback, ApiError,
 } from "../www/src/api/client";
 
@@ -69,6 +69,13 @@ describe( "/jn stations", () => {
 	} );
 } );
 
+describe( "/je special stations", () => {
+	it( "accepts a sparse typed map and rejects malformed definitions", () => {
+		expect( parseJe( { 2: { st: 1, sd: "definition" } } )[ "2" ]?.st ).toBe( 1 );
+		expect( () => parseJe( { 2: { st: "1", sd: "definition" } } ) ).toThrow( ApiError );
+	} );
+} );
+
 describe( "/jp programs", () => {
 	const jp = parseJp( fixture( "jp" ) );
 	it( "pd is an array of program tuples with int16 daterange", () => {
@@ -104,6 +111,17 @@ describe( "/js status", () => {
 	it( "sn length matches nstations", () => {
 		const js = parseJs( fixture( "js" ) );
 		expect( js.sn ).toHaveLength( js.nstations );
+	} );
+} );
+
+describe( "/ja aggregate", () => {
+	it( "parses the five nested responses and the auth-failure fallback", () => {
+		const aggregate = parseJa( {
+			settings: fixture( "jc" ), programs: fixture( "jp" ), options: fixture( "jo" ),
+			status: fixture( "js" ), stations: fixture( "jn" ),
+		} );
+		expect( "settings" in aggregate && aggregate.options.fwv ).toBe( 221 );
+		expect( parseJa( { fwv: 221 } ) ).toEqual( { fwv: 221 } );
 	} );
 } );
 

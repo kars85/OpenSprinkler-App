@@ -82,6 +82,10 @@ export interface JnResponse {
 	maxlen: number;
 }
 
+/** /je — sparse map of special-station definitions keyed by zero-based station id. */
+export interface JeStation { st: number; sd: string; }
+export type JeResponse = Record<string, JeStation>;
+
 /** /jp program tuple: [flags, days0, days1, starttimes[4], durations[nstations], name, daterange[3]]. */
 export type OSProgram = [
 	flags: number,
@@ -107,6 +111,15 @@ export type JlResponse = JlRow[];
 
 /** /js — per-station on/off status. */
 export interface JsResponse { sn: number[]; nstations: number; }
+
+/** /ja — authenticated aggregate of the five core read responses. */
+export interface JaResponse {
+	settings: JcResponse;
+	programs: JpResponse;
+	options: JoResponse;
+	status: JsResponse;
+	stations: JnResponse;
+}
 
 /** Derived capability flags (fwv matrix, PRD §5). */
 export interface Capabilities {

@@ -172,7 +172,7 @@ plain indexed rows are sufficient — no time-series extension needed.
 |---|---|---|
 | `STORAGE` | `sqlite` | storage backend (v1: only `sqlite`) |
 | `DATABASE_PATH` | `/data/data.db` | SQLite file (on the mounted volume) |
-| `CONTROLLER_BASE` | — (required) | controller URL, e.g. `http://10.10.100.246/` |
+| `CONTROLLER_BASE` | — (required) | controller URL, e.g. `http://controller.local/` |
 | `CONTROLLER_PW` | — | device password (md5-hashed server-side; omit if `ipas`) |
 | `CONTROLLER_FWV` | probed | firmware version (auto-probed from `/jo` if unset) |
 | `POLL_INTERVAL_SEC` | `300` | collection interval |

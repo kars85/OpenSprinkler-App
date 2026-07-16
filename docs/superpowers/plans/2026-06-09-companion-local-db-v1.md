@@ -118,12 +118,12 @@ git commit -m "chore(companion): scaffold server deps + tsconfig + test config"
 import { describe, it, expect } from "vitest";
 import { loadConfig } from "../../server/config";
 
-const base = { CONTROLLER_BASE: "http://10.0.0.5/" };
+const base = { CONTROLLER_BASE: "http://controller.local/" };
 
 describe( "loadConfig", () => {
 	it( "applies defaults and requires CONTROLLER_BASE", () => {
 		const c = loadConfig( base );
-		expect( c.controllerBase ).toBe( "http://10.0.0.5/" );
+		expect( c.controllerBase ).toBe( "http://controller.local/" );
 		expect( c.pollIntervalSec ).toBe( 300 );
 		expect( c.historyMaxDays ).toBe( 90 );
 		expect( c.logBackfillDays ).toBe( 2 );
@@ -171,7 +171,7 @@ function intOr( v: string | undefined, fallback: number ): number {
 
 export function loadConfig( env: Record<string, string | undefined> = process.env ): CompanionConfig {
 	const controllerBase = env.CONTROLLER_BASE;
-	if ( !controllerBase ) throw new Error( "CONTROLLER_BASE is required (e.g. http://10.0.0.5/)" );
+	if ( !controllerBase ) throw new Error( "CONTROLLER_BASE is required (e.g. http://controller.local/)" );
 	return {
 		storage: "sqlite",
 		databasePath: env.DATABASE_PATH || "/data/data.db",
@@ -1545,8 +1545,8 @@ volumes:
 - [ ] **Step 3: Create `.env.example`**
 
 ```bash
-CONTROLLER_BASE=http://10.10.100.246/
-CONTROLLER_PW=opendoor
+CONTROLLER_BASE=http://controller.local/
+CONTROLLER_PW=
 # CONTROLLER_ID=my-house        # optional; defaults to device MAC
 POLL_INTERVAL_SEC=300
 HISTORY_MAX_DAYS=90

@@ -32,3 +32,72 @@ jobs:
         run: |
           grunt
           npm run test
+
+  modern_contract:
+    name: Modern App contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run check:tracked
+      - run: npm run test:safety
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+      - run: npm run test:server
+      - run: npx vite build app
+
+      - name: Record and guard production bundle size
+        shell: bash
+        run: |
+          JS_BYTES=$(wc -c < dist/assets/app.js)
+          CSS_GZIP_BYTES=$(gzip -c dist/assets/app.css | wc -c)
+          echo "app.js=${JS_BYTES} bytes; app.css.gzip=${CSS_GZIP_BYTES} bytes; baseline=3319; max=3650"
+          test "$CSS_GZIP_BYTES" -le 3650
+
+      - run: npx vite build demo
+
+  axis_d_demo:
+    name: App ↔ Firmware DEMO contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: kars85/OpenSprinkler-Firmware
+          path: firmware
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build native Firmware DEMO
+        working-directory: firmware
+        run: sudo ./build.sh -s demo
+
+      - name: Run Axis-D contract
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/opensprinkler-demo"
+          ./firmware/OpenSprinkler -d "$RUNNER_TEMP/opensprinkler-demo" > "$RUNNER_TEMP/opensprinkler-demo.log" 2>&1 &
+          DEMO_PID=$!
+          trap 'kill "$DEMO_PID" 2>/dev/null || true' EXIT
+          READY=0
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:8080/jo > /dev/null; then READY=1; break; fi
+            sleep 1
+          done
+          if [ "$READY" != 1 ]; then cat "$RUNNER_TEMP/opensprinkler-demo.log"; exit 1; fi
+          OS_DEMO_BASE=http://127.0.0.1:8080 FIRMWARE_ROOT="$GITHUB_WORKSPACE/firmware" npm run test:firmware-demo

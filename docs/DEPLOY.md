@@ -53,13 +53,13 @@ The firmware loads the UI from `SOPT_JAVASCRIPTURL` (default `https://ui.openspr
 `OpenSprinkler-Firmware/defines.h:158`). Point a test device at the new site:
 
 ```
-http://<device-ip>/cu?jsp=https://<nextui-domain>/js&pw=<md5(password)>
+http://<device-ip>/cu?jsp=https://<nextui-domain>&pw=<md5(password)>
 ```
 
 - The build now publishes the bootstrap **`home.js`** entry at the deploy root (`dist/home.js`,
   from `app/public/home.js`). It self-locates its base and loads the dashboard bundle
-  (`assets/app.js` + `assets/app.css`) — so when `SOPT_JAVASCRIPTURL` points here (such that
-  `home.js` is reachable at `<jsp>/home.js`), the firmware bootstrap loads the modernized UI.
+  (`assets/app.js` + `assets/app.css`) — so `SOPT_JAVASCRIPTURL` is the site root and
+  `home.js` is reachable at `<jsp>/home.js`.
   Verified by `test/home-bootstrap.spec.ts` (jsdom).
 - The **md5 login UI** is built (`www/src/auth/`): non-`ipas` devices get a password prompt that
   authenticates via the version-gated `/sp` check (md5 for `fwv>=213`). md5 is verified against
@@ -72,7 +72,9 @@ http://<device-ip>/cu?jsp=https://<nextui-domain>/js&pw=<md5(password)>
   [`docs/HARDWARE-VERIFICATION.md`](HARDWARE-VERIFICATION.md) (LAN + OTC render, auth, and a safe
   control smoke test), and capture live fixtures with `npm run capture` (see below).
 
-**Rollback:** point the device back at the default:
+**Rollback:** follow the reviewed, nonblank rollback procedure in
+[`HARDWARE-VERIFICATION.md`](HARDWARE-VERIFICATION.md). A blank `jsp` cannot be restored through
+`/cu?jsp=` because the firmware ignores a zero-length value. The explicit compiled default is:
 ```
 http://<device-ip>/cu?jsp=https://ui.opensprinkler.com/js&pw=<md5(password)>
 ```
@@ -80,18 +82,20 @@ No firmware flash, no app-store release — just a config flip.
 
 ## Capture live fixtures (turns the contract tests into a real drift guard)
 
-The committed `test/fixtures/api/*.json` are **derived from the firmware emit code**, not a live
-device. Replace them with a real capture (one set per `fwv`) so the contract tests pin the actual
-wire format:
+The committed `test/fixtures/api/*.json` are deterministic, source-derived parser fixtures. Live
+evidence is stored separately, sanitized, and keyed by combined firmware version:
 
 ```bash
-npm run capture -- --base http://<device-ip>/ --pw '<device password>'   # or --pwhash <md5>
-# writes test/fixtures/api/{jc,jo,jn,jp,jl,js}.fixture.json
-npm run test:contract                                                      # re-pin against the live data
+$env:OS_LIVE_BASE = 'http://<device-host>/'
+$env:OS_LIVE_PW = '<device-password>'
+npm run capture       # writes test/fixtures/live/<fwv*10+fwm>/
+npm run verify:live   # runs the App parsers against the controller
 ```
 
-The script probes `/jo` for `fwv` and hashes the password with md5 for `fwv>=213` (matching the
-firmware). It only **reads** (`/jc /jo /jn /jp /jl /js`) — it never sends a change command.
+The script preflight-rejects controllers below `221`, hash-authenticates, enforces the authenticated
+`2214 + kars85` floor, then shape-checks and scrubs
+`/jc /jo /jn /je /jp /jl /js /ja`, and never sends a change command. Do not put credentials in
+command arguments.
 
 ## Status / caveats
 
