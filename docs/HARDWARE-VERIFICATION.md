@@ -13,7 +13,7 @@ factory-reset device configuration.
 
 ## 0. Before any controller access
 
-- [ ] Rotate every credential exposed before this runbook was sanitized.
+- [ ] Before production cutover, rotate every credential exposed before this runbook was sanitized.
 - [ ] Store the controller base, credentials, OTC token, and physical recovery method in an
   approved secret store—not in this repository, issue comments, shell history, or screenshots.
 - [ ] Confirm direct `/su` recovery access. `/su` displays recovery settings; authenticated
@@ -180,6 +180,6 @@ Neither HTTP 200 nor a UI toast proves restoration.
 - [ ] Weather-driven values are judged by configuration/health, not a moving literal.
 - [ ] No throwaway program or test name remains.
 - [ ] No live-write environment flag remains.
-- [ ] Previously exposed credentials have been rotated.
+- [ ] Before production cutover, previously exposed credentials have been rotated.
 - [ ] Comment **OPERATOR-GATE** with skipped hardware/browser checks. Do not mark hardware-only
   checkboxes complete from software evidence.

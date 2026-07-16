@@ -133,7 +133,7 @@ Do not expose WaterBudget until a separate decision funds all of: an additive We
 
 ## 4. First three steps
 
-1. **Make the evidence safe and accurate.** Remove live credentials/personal controller details from tracked runbooks, rotate exposed credentials, reconcile the drift table above, declare the `2214 + kars85` floor, and record the exact OTF revision to be tested. Credential rotation remains an operator action even after tracked copies are sanitized.
+1. **Make the evidence safe and accurate.** Remove live credentials/personal controller details from tracked runbooks, reconcile the drift table above, declare the `2214 + kars85` floor, and record the exact OTF revision to be tested. Credential rotation remains an operator action and, by operator decision on 2026-07-16, is deferred to the Phase 5 production cutover gate.
 2. **Fix and prove the read-only seam.** Preserve the OTC forward prefix, use the existing pre-auth `/jo` probe when firmware globals are absent, make the deployment base and `home.js` path agree, put typecheck/Vitest/Vite build in CI, and prove read-only LAN-injected plus OTC access on iPhone Safari and a desktop browser (`OpenSprinkler-App/www/src/api/client.ts:123-141`; `OpenSprinkler-App/www/src/api/client.ts:175-181`; `OpenSprinkler-App/www/src/seam/device.ts:65-99`).
 3. **Make writes loss-resistant before building the schedule UX.** Validate at trust boundaries, send only dirty option keys, fresh-read/compare whole program tuples, confirm risky actions, read back every mutation, and keep unproven controls disabled. Only then implement the schedule flow in `UX-SPEC.md`.
 
@@ -147,7 +147,7 @@ Do not expose WaterBudget until a separate decision funds all of: an additive We
 
 **Work:**
 
-- Sanitize the hardware runbook, rotate exposed credentials, and add a CI secret scan over tracked content.
+- Sanitize the hardware runbook and add a CI secret scan over tracked content; retain exposed-credential rotation as a Phase 5 production cutover gate.
 - Correct the documented capability policy, `/cu` cutover path, Weather restriction status, fixed notification behavior, actual fields under `/jc`, active targets, and App↔Weather exceptions—including the false ESP32 support claim and the `/jo` versus `/jc` cached-Weather attribution identified in §2.4.
 - Add an Axis-A request-side method-ID check and test the final flat encoding, RainDelay, reserved `scales`, and the combined explanation-pressure case—not only `convertToLegacyFormat`.
 - Add an Axis-D contract job that starts the retained firmware DEMO/native surface and runs the App parsers against `/jo`, `/jc`, `/jn`, `/je`, `/jp`, `/js`, `/ja`, mutations, and failed `/jo`/`/ja`. Keep a sanitized live `2214` corpus separate from curated fixtures. `/jn` supplies the special bit; `/je` supplies the type and definition needed for safe type-aware copy (`OpenSprinkler-Firmware/opensprinkler_server.cpp:450-516`).
@@ -160,7 +160,7 @@ Do not expose WaterBudget until a separate decision funds all of: an additive We
 
 **Acceptance criteria:**
 
-- [ ] No live password, token, API key, or precise private controller inventory remains in tracked docs; affected credentials are rotated and the tracked-content secret scan passes.
+- [ ] No live password, token, API key, or precise private controller inventory remains in tracked docs, and the tracked-content secret scan passes. Previously exposed credentials remain scheduled for rotation before Phase 5 production cutover.
 - [ ] `fork-versioning.md`, both Weather contract docs, `ecosystem.md`, App `firmware-contract.md`, and the firmware API reference agree with source.
 - [ ] `HARDWARE-VERIFICATION.md` captures `jsp` from `/jc`, handles a blank value with the normalized nonblank rollback rule, and no longer promises exact blank restoration; no live flip proceeds before this is reviewed.
 - [ ] App `firmware-contract.md` labels cleartext fallback legacy-only and documents the modern preflight + hash-auth + `fwm`/field-presence policy without requiring a `fwv` bump.
@@ -290,12 +290,13 @@ Do not expose WaterBudget until a separate decision funds all of: an additive We
 **Cutover procedure:**
 
 1. Deploy an immutable modern release to a fork-owned parallel base where `<base>/home.js` is stable.
-2. On the device, capture authenticated `/jc.jsp` and verify direct `/su` recovery access before changing anything (`OpenSprinkler-Firmware/opensprinkler_server.cpp:1207-1231`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:1281-1284`).
-3. If captured `jsp` is blank, do **not** rely on `/cu?jsp=`: the parser returns zero length and the handler ignores it. Normalize to the explicit compiled default `https://ui.opensprinkler.com/js`, verify the legacy shell, and record that effective rollback value before proceeding. If exact blank preservation is required, stop until a hardware-proven method exists (`OpenSprinkler-Firmware/opensprinkler_server.cpp:131-145`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:148-205`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:1505-1512`; `OpenSprinkler-Firmware/defines.h:170-174`).
-4. Write the parallel site root with authenticated `/cu?jsp=<base>`; do not append `/js` unless the artifact is deliberately emitted there (`OpenSprinkler-Firmware/opensprinkler_server.cpp:1488-1529`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:1369-1385`).
-5. Re-read `/jc.jsp`, load via LAN and OTC, verify polling/auth/unsupported-floor behavior, and perform only the approved smoke tests.
-6. Roll back by writing the recorded nonblank effective rollback base through `/cu`, then verify `/jc.jsp` and the legacy shell. No firmware flash.
-7. Run one device for at least fourteen days and two real scheduled cycles without rollback; then move remaining fork devices individually.
+2. Rotate every credential exposed before the Phase 0 sanitization and keep all replacement values out of tracked content.
+3. On the device, capture authenticated `/jc.jsp` and verify direct `/su` recovery access before changing anything (`OpenSprinkler-Firmware/opensprinkler_server.cpp:1207-1231`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:1281-1284`).
+4. If captured `jsp` is blank, do **not** rely on `/cu?jsp=`: the parser returns zero length and the handler ignores it. Normalize to the explicit compiled default `https://ui.opensprinkler.com/js`, verify the legacy shell, and record that effective rollback value before proceeding. If exact blank preservation is required, stop until a hardware-proven method exists (`OpenSprinkler-Firmware/opensprinkler_server.cpp:131-145`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:148-205`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:1505-1512`; `OpenSprinkler-Firmware/defines.h:170-174`).
+5. Write the parallel site root with authenticated `/cu?jsp=<base>`; do not append `/js` unless the artifact is deliberately emitted there (`OpenSprinkler-Firmware/opensprinkler_server.cpp:1488-1529`; `OpenSprinkler-Firmware/opensprinkler_server.cpp:1369-1385`).
+6. Re-read `/jc.jsp`, load via LAN and OTC, verify polling/auth/unsupported-floor behavior, and perform only the approved smoke tests.
+7. Roll back by writing the recorded nonblank effective rollback base through `/cu`, then verify `/jc.jsp` and the legacy shell. No firmware flash.
+8. Run one device for at least fourteen days and two real scheduled cycles without rollback; then move remaining fork devices individually.
 
 **What “done” means:**
 
@@ -309,6 +310,7 @@ Do not expose WaterBudget until a separate decision funds all of: an additive We
 **Acceptance criteria:**
 
 - [ ] Parallel host is fork-owned and immutable releases retain `home.js`.
+- [ ] Every credential exposed before Phase 0 sanitization is rotated before production cutover; replacement values never enter tracked content.
 - [ ] Each target device has a nonblank verified effective rollback base and passes flip, readback, LAN/OTC smoke, and rollback; a blank prior value is normalized before the flip.
 - [ ] No device requires factory reset or firmware flash for UI rollback.
 - [ ] Fourteen-day/two-cycle observation completes without a rollback-triggering defect.
@@ -345,7 +347,7 @@ Do not expose WaterBudget until a separate decision funds all of: an additive We
 |---|---|---|
 | Bundled settings/program writes overwrite unrelated live state. | **Critical** | Dirty-key writes, fresh-read program compare, validation, confirmation, post-write readback; keep unproven controls disabled. |
 | Accidental `fwv` bump factory-resets device configuration. | **Critical** | Treat `fwv` as storage epoch; review guard; use `fwm` only for approved capability. |
-| Live credentials/controller details remain in tracked docs. | **Critical** | Sanitize and rotate in the first step; add secret scanning. |
+| Live credentials/controller details remain in tracked docs or exposed credentials survive into production. | **Critical** | Sanitize and scan tracked content in Phase 0; rotate exposed credentials before Phase 5 production cutover. |
 | OTC path/auth/bootstrap defect prevents login or sends requests to the wrong URL. | **High** | Pre-auth probe, prefix-preserving base, integration tests, read-only device proof before writes. |
 | HTTPS app cannot reach HTTP LAN device. | **High** | Prove device-injected HTTP shell and OTC paths on Safari/desktop; never bypass browser policy; retain legacy. |
 | Blank prior `jsp` cannot be restored with `/cu?jsp=`. | **High** | Normalize to and verify the explicit compiled default before cutover; record a nonblank effective rollback base. |
