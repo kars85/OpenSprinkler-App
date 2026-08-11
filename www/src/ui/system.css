@@ -227,6 +227,11 @@ fieldset.duration-list .dl-row select { min-width: 0; font-size: var(--fs-14); p
 	form[data-settings="program"] > fieldset,
 	form[data-settings="program"] > button,
 	form[data-settings="program"] > .form-actions { grid-column: 1 / -1; }
+	/* Keep grid rows homogeneous: Program name gets its own full row, so the two checkboxes pair
+	 * on one row and the two selects (Day restriction | Schedule) pair on the next — labels land
+	 * on a shared baseline instead of a checkbox floating beside a two-line field. */
+	form[data-settings="program"] > .field:first-of-type { grid-column: 1 / -1; }
+	form[data-settings="program"] > .field-check { align-self: center; }
 }
 /* Weekday checkboxes read as one horizontal week, not seven stacked rows. */
 form[data-settings="program"] fieldset[data-when="weekly"] { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
