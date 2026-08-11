@@ -13,6 +13,73 @@ async function appWith( seedTs?: number ) {
 	return createApiRoutes( deps );
 }
 
+async function appWithEvents() {
+	const store = new SqliteStorageProvider( ":memory:" ); await store.init();
+	await store.appendEvents( "c1", [
+		{ ts: 1000, source: "weather", level: "normal", label: "Weather", detail: "Weather adjustment problem: Timed Out." },
+		{ ts: 2000, source: "weather", level: "detail", label: "Weather", detail: "Controller completed a weather check; water level is 85%." },
+		{ ts: 3000, source: "system", level: "debug", label: "System", detail: "trace" },
+	] );
+	const deps: ApiDeps = { store, controllerId: "c1", pollIntervalSec: 300, historyMaxDays: 90, now: () => 10000, lastError: () => null };
+	return createApiRoutes( deps );
+}
+
+describe( "GET /log", () => {
+	it( "returns ascending events; level is a verbosity ceiling; source filters", async () => {
+		const app = await appWithEvents();
+		const all = await ( await app.request( "/log?from=0&to=9000" ) ).json();
+		expect( all.events.map( ( e: { ts: number } ) => e.ts ) ).toEqual( [ 1000, 2000, 3000 ] );
+		const normal = await ( await app.request( "/log?from=0&to=9000&level=normal" ) ).json();
+		expect( normal.events.map( ( e: { ts: number } ) => e.ts ) ).toEqual( [ 1000 ] );
+		const detail = await ( await app.request( "/log?from=0&to=9000&level=detail" ) ).json();
+		expect( detail.events.map( ( e: { ts: number } ) => e.ts ) ).toEqual( [ 1000, 2000 ] );
+		const system = await ( await app.request( "/log?from=0&to=9000&source=system" ) ).json();
+		expect( system.events.map( ( e: { ts: number } ) => e.ts ) ).toEqual( [ 3000 ] );
+	} );
+
+	it( "rejects unknown level or source", async () => {
+		const app = await appWithEvents();
+		expect( ( await app.request( "/log?level=verbose" ) ).status ).toBe( 400 );
+		expect( ( await app.request( "/log?source=controller" ) ).status ).toBe( 400 );
+	} );
+
+	it( "binds cursors to the filters that produced them", async () => {
+		const app = await appWithEvents();
+		const first = await ( await app.request( "/log?from=0&to=9000&limit=1" ) ).json();
+		expect( first.nextCursor ).toBeTruthy();
+		// Same filters: cursor accepted.
+		const next = await app.request( `/log?from=0&to=9000&limit=1&cursor=${ first.nextCursor }` );
+		expect( next.status ).toBe( 200 );
+		// Different verbosity: the cursor no longer matches its composed kind.
+		const cross = await app.request( `/log?from=0&to=9000&limit=1&level=normal&cursor=${ first.nextCursor }` );
+		expect( cross.status ).toBe( 400 );
+	} );
+
+	it( "binds cursors to the source filter, and rejects payload-tampered cursors", async () => {
+		const app = await appWithEvents();
+		// Source binding: a weather-walk cursor must not continue a system walk.
+		const weather = await ( await app.request( "/log?from=0&to=9000&limit=1&source=weather" ) ).json();
+		expect( weather.nextCursor ).toBeTruthy();
+		expect( ( await app.request( `/log?from=0&to=9000&limit=1&source=system&cursor=${ weather.nextCursor }` ) ).status ).toBe( 400 );
+		expect( ( await app.request( `/log?from=0&to=9000&limit=1&source=weather&cursor=${ weather.nextCursor }` ) ).status ).toBe( 200 );
+		// Payload tampering: decode the well-formed token, push afterTs outside the bound range,
+		// re-encode. Charset checks pass; the semantic validation must still reject it.
+		const decoded = JSON.parse( Buffer.from( weather.nextCursor, "base64url" ).toString( "utf8" ) ) as unknown[];
+		decoded[ 5 ] = 99_999; // afterTs beyond toTs
+		const tampered = Buffer.from( JSON.stringify( decoded ) ).toString( "base64url" );
+		expect( ( await app.request( `/log?from=0&to=9000&limit=1&source=weather&cursor=${ tampered }` ) ).status ).toBe( 400 );
+	} );
+
+	it( "rejects cursor pagination on a defaulted range instead of clock-dependent expiry", async () => {
+		const app = await appWithEvents();
+		// First page without `to` works; continuing with a cursor but no explicit `to` is a
+		// deterministic 400 (a re-resolved default range could never match the cursor's binding).
+		expect( ( await app.request( "/log?limit=1" ) ).status ).toBe( 200 );
+		const first = await ( await app.request( "/log?from=0&to=9000&limit=1" ) ).json();
+		expect( ( await app.request( `/log?limit=1&cursor=${ first.nextCursor }` ) ).status ).toBe( 400 );
+	} );
+} );
+
 describe( "api routes", () => {
 	it( "GET /health → ok with counts; pollerStale when no/old data", async () => {
 		const app = await appWith();

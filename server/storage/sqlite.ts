@@ -1,13 +1,20 @@
 import Database from "better-sqlite3";
 import { chmod } from "node:fs/promises";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, asc, eq, gt, gte, lte, lt, or, sql } from "drizzle-orm";
-import { telemetry, runLog } from "./schema";
+import { and, asc, eq, gt, gte, inArray, lte, lt, or, sql } from "drizzle-orm";
+import { telemetry, runLog, events } from "./schema";
 import { migrate } from "./migrate";
 import type {
 	StorageProvider, TelemetrySample, StoredTelemetry, RunLogRow, HistoryQuery, HistoryPageQuery,
-	HistoryPage, StorageHealth,
+	HistoryPage, StorageHealth, EventRow, EventsPageQuery, EventLevel,
 } from "./provider";
+
+const LEVEL_RANK: Record<EventLevel, number> = { normal: 0, detail: 1, debug: 2 };
+
+/** Levels included at a given verbosity ceiling. */
+function levelsUpTo( maxLevel: EventLevel ): EventLevel[] {
+	return ( Object.keys( LEVEL_RANK ) as EventLevel[] ).filter( ( l ) => LEVEL_RANK[ l ] <= LEVEL_RANK[ maxLevel ] );
+}
 
 export class SqliteStorageProvider implements StorageProvider {
 	private raw: Database.Database | null = null;
@@ -171,6 +178,84 @@ export class SqliteStorageProvider implements StorageProvider {
 		const r = this.orm().select( { m: sql<number>`max(${ runLog.endTs })` } ).from( runLog )
 			.where( eq( runLog.controller, controller ) ).all();
 		return r[ 0 ]?.m ?? null;
+	}
+
+	async lastTelemetry( controller: string ): Promise<StoredTelemetry | null> {
+		// Insertion order (id), NOT greatest timestamp: after a backward host-clock step every new
+		// sample carries a smaller ts, and a max-ts baseline would re-diff the same transitions
+		// against a stale row on every poll until wall time catches up.
+		const r = this.orm().select( {
+			ts: telemetry.ts, waterLevel: telemetry.waterLevel, rainDelay: telemetry.rainDelay,
+			weatherErr: telemetry.weatherErr, weatherRestricted: telemetry.weatherRestricted,
+			lastWeatherUpdate: telemetry.lastWeatherUpdate, activeStations: telemetry.activeStations,
+			rssi: telemetry.rssi, currentDraw: telemetry.currentDraw,
+		} ).from( telemetry ).where( eq( telemetry.controller, controller ) )
+			.orderBy( sql`${ telemetry.id } desc` ).limit( 1 ).all();
+		return ( r[ 0 ] as StoredTelemetry | undefined ) ?? null;
+	}
+
+	async appendSample( controller: string, s: TelemetrySample, eventRows: EventRow[] ): Promise<void> {
+		// Raw prepared statements + raw transaction (drizzle inserts are async and cannot join a
+		// better-sqlite3 synchronous transaction — same rationale as upsertRunLog).
+		const raw = this.connection();
+		const insertTelemetry = raw.prepare(
+			"INSERT INTO telemetry (controller, ts, water_level, rain_delay, weather_err, weather_restricted, " +
+			"last_weather_update, active_stations, rssi, current_draw, raw) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		);
+		const insertEvent = raw.prepare(
+			"INSERT INTO events (controller, ts, source, level, label, detail) VALUES (?, ?, ?, ?, ?, ?)",
+		);
+		raw.transaction( () => {
+			insertTelemetry.run( controller, s.ts, s.waterLevel, s.rainDelay, s.weatherErr, s.weatherRestricted,
+				s.lastWeatherUpdate, s.activeStations, s.rssi, s.currentDraw, s.raw );
+			for ( const e of eventRows ) insertEvent.run( controller, e.ts, e.source, e.level, e.label, e.detail );
+		} )();
+	}
+
+	async appendEvents( controller: string, rows: EventRow[] ): Promise<void> {
+		if ( rows.length === 0 ) return;
+		await this.orm().insert( events ).values( rows.map( ( e ) => ( {
+			controller, ts: e.ts, source: e.source, level: e.level, label: e.label, detail: e.detail,
+		} ) ) ).execute();
+	}
+
+	async pageEvents( controller: string, q: EventsPageQuery ): Promise<HistoryPage<EventRow>> {
+		const raw = this.connection(), db = this.orm();
+		const included = levelsUpTo( q.maxLevel ?? "debug" );
+		const filters = [
+			inArray( events.level, included ),
+			...( q.source ? [ eq( events.source, q.source ) ] : [] ),
+		];
+		return raw.transaction( () => {
+			const snapshotId = q.cursor?.snapshotId ?? db.select( { value: sql<number | null>`max(${ events.id })` } )
+				.from( events ).where( and(
+					eq( events.controller, controller ), gte( events.ts, q.fromTs ), lte( events.ts, q.toTs ),
+				) ).all()[ 0 ]?.value ?? 0;
+			const after = q.cursor ? or(
+				gt( events.ts, q.cursor.afterTs ),
+				and( eq( events.ts, q.cursor.afterTs ), gt( events.id, q.cursor.afterId ) ),
+			) : undefined;
+			const limit = Math.min( Math.max( q.limit, 1 ), 5000 );
+			const selected = db.select( {
+				id: events.id, ts: events.ts, source: events.source, level: events.level,
+				label: events.label, detail: events.detail,
+			} ).from( events ).where( and(
+				eq( events.controller, controller ), gte( events.ts, q.fromTs ), lte( events.ts, q.toTs ),
+				lte( events.id, snapshotId ), ...filters, after,
+			) ).orderBy( asc( events.ts ), asc( events.id ) ).limit( limit + 1 ).all();
+			const hasMore = selected.length > limit;
+			const visible = hasMore ? selected.slice( 0, limit ) : selected;
+			const last = visible.at( -1 );
+			return {
+				rows: visible.map( ( { id: _id, ...row } ) => row as EventRow ),
+				nextCursor: hasMore && last ? { snapshotId, afterTs: last.ts, afterId: last.id } : null,
+			};
+		} )();
+	}
+
+	async pruneEvents( olderThanTs: number ): Promise<number> {
+		const res = await this.orm().delete( events ).where( lt( events.ts, olderThanTs ) ).execute();
+		return res.changes;
 	}
 
 	async pruneTelemetry( olderThanTs: number ): Promise<number> {

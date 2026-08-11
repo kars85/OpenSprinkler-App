@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { Buffer } from "node:buffer";
-import type { HistoryPageCursor, StorageProvider } from "../storage/provider";
+import type { EventLevel, EventSource, HistoryPageCursor, StorageProvider } from "../storage/provider";
 
 export const DEFAULT_PAGE_SIZE = 5000;
 export const MAX_PAGE_SIZE = 5000;
@@ -15,7 +15,11 @@ export interface ApiDeps {
 }
 
 interface ParsedQuery { fromTs: number; toTs: number; limit: number; cursorToken: string | null; }
-type CursorKind = "telemetry" | "runlog";
+/** "telemetry", "runlog", or a composed "events|<level>|<source>" — filters bind the cursor. */
+type CursorKind = string;
+
+const EVENT_LEVELS = new Set<string>( [ "normal", "detail", "debug" ] );
+const EVENT_SOURCES = new Set<string>( [ "weather", "system" ] );
 
 const PUBLIC_LAST_ERRORS = new Set( [
 	"database unavailable", "database operation failed", "controller authentication failed",
@@ -48,9 +52,14 @@ function parseQuery( url: URL, now: number, maxDays: number ): ParsedQuery | nul
 	if ( url.searchParams.has( "offset" ) ) return null;
 	if ( limit === null || limit < 1 || limit > MAX_PAGE_SIZE ) return null;
 
+	const cursorToken = url.searchParams.get( "cursor" );
+	// A defaulted `to` re-resolves from the clock on every request, while cursors bind the exact
+	// range they were minted for — so page 2 of a default-range walk would 400 as soon as the clock
+	// advanced. Fail deterministically on the first continuation instead.
+	if ( cursorToken !== null && rawTo === null ) return null;
 	return {
 		fromTs: Math.max( from, to - maxDays * 86400 ), toTs: to, limit,
-		cursorToken: url.searchParams.get( "cursor" ),
+		cursorToken,
 	};
 }
 
@@ -118,6 +127,27 @@ export function createApiRoutes( deps: ApiDeps ): Hono {
 		return c.json( {
 			telemetry: page.rows,
 			nextCursor: page.nextCursor ? encodeCursor( "telemetry", query, page.nextCursor ) : null,
+		} );
+	} );
+
+	app.get( "/log", async ( c ) => {
+		const url = new URL( c.req.url );
+		const query = parseQuery( url, deps.now(), deps.historyMaxDays );
+		if ( !query ) return c.json( { error: "invalid range or page" }, 400 );
+		const level = url.searchParams.get( "level" ) ?? "debug";
+		if ( !EVENT_LEVELS.has( level ) ) return c.json( { error: "invalid level" }, 400 );
+		const source = url.searchParams.get( "source" );
+		if ( source !== null && !EVENT_SOURCES.has( source ) ) return c.json( { error: "invalid source" }, 400 );
+		const kind = `events|${ level }|${ source ?? "all" }`;
+		const cursor = decodeCursor( kind, query );
+		if ( cursor === null ) return c.json( { error: "invalid range or page" }, 400 );
+		const page = await deps.store.pageEvents( controllerId( deps ), {
+			fromTs: query.fromTs, toTs: query.toTs, limit: query.limit, cursor: cursor ?? undefined,
+			maxLevel: level as EventLevel, source: ( source as EventSource | null ) ?? undefined,
+		} );
+		return c.json( {
+			events: page.rows,
+			nextCursor: page.nextCursor ? encodeCursor( kind, query, page.nextCursor ) : null,
 		} );
 	} );
 
