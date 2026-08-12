@@ -85,17 +85,17 @@ capture the §0 baseline first and **click nothing**.
 
 | Section | Status |
 |---|---|
-| §1 read-only proof — `npm run verify:live` | ⬜ Run against the private target and record results outside version control. |
+| §1 read-only proof — `npm run verify:live` | ✅ 2026-08-12, fwv 221 — 5 read tests green; results recorded privately. |
 | §1b read-only capture — `npm run capture` | ⬜ Capture into the redacted, version-scoped directory and inspect before committing. |
-| §2a UI render vs mocks (`npm run demo`) | ⬜ Run the fixture-backed dashboard and inspect every tab. |
+| §2a UI render vs mocks (`npm run demo`) | ✅ 2026-08-12 — every tab exercised repeatedly against fixtures during the live-design sessions. |
 | §2b live LAN render | ⬜ Gated (armed controls — capture baseline, click nothing). |
 | §3 OTC remote / mixed-content (PRD §4 #1) | ⬜ Gated (needs OTC token + HTTPS build + browser). |
-| §4 auth | ⬜ Verify wrong-password rejection and correct-password authorization privately. |
-| §5 reversible write proof (rain delay) | ⬜ Capture, mutate, restore, and independently verify the original state. |
-| §6 control smoke test (PHYSICAL) | ⬜ Gated — **actuates valves.** Default-SKIP; requires a disconnected zone. |
-| §7 settings write-back (atomic) | ⬜ Use only captured throwaway fields and prove neighboring fields remain unchanged. |
+| §4 auth | ✅ 2026-08-12 — wrong `pw` → `result:2` on read and write; unauth `/jo` is the `{fwv}` stub; correct hash authorizes. |
+| §5 reversible write proof (rain delay) | ✅ 2026-08-12 — set→verify→cancel via harness; `rd/rdst` independently re-read at baseline. |
+| §6 control smoke test (PHYSICAL) | ◐ §6d ✅ + §6e ✅ 2026-08-12 (throwaway program create/toggle/delete; `ocs` clear). §6a–c actuation/enable remain operator-gated SKIP. |
+| §7 settings write-back (atomic) | ✅ 2026-08-12 — §7a dname, §7c uwt (wsp/wto byte-identical), §7d disabled-station rename (stn_dis byte-identical); all restored + verified. |
 | §8 rollback drill | ⬜ Deferred to the real rollout. If `/jc.jsp` is blank, first normalize it to the explicit compiled-default URL and verify that nonblank rollback value; never rely on `/cu?jsp=` to recreate an empty setting. |
-| §9 final close-out diff | ⬜ Gated. |
+| §9 final close-out diff | ✅ 2026-08-12 — full-baseline diff clean (only the controller's own `lwc` weather-call timestamp advanced). |
 
 ---
 
