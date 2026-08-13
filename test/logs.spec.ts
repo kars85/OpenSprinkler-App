@@ -141,6 +141,18 @@ describe( "companion events and filters in the log", () => {
 		expect( html ).toContain( "No entries match the current filters." );
 		expect( html ).not.toContain( "No log entries yet" );
 	} );
+	it( "renders companion sensor events with the sensor badge and the sensors filter bucket", () => {
+		const sensorEvent = { ts: 1717975900, source: "sensors" as const, level: "normal" as const, label: "Rain", detail: "Rain sensor activated — scheduled watering is paused." };
+		const html = renderLogs( jl, jn, jo, { companionEvents: [ sensorEvent ] } );
+		expect( html ).toContain( "Rain sensor activated" );
+		expect( html ).toContain( 'badge spec">Rain' );
+		// The sensors chip isolates it together with firmware sensor rows.
+		const filtered = renderLogs( jl, jn, jo, { companionEvents: [ sensorEvent ], filter: { level: "debug", source: "sensors" } } );
+		expect( filtered ).toContain( "Rain sensor activated" );
+		expect( filtered ).toContain( "Sensor 1 active" );
+		expect( filtered ).not.toContain( "Garden Drip ran 10m" );
+	} );
+
 	it( "restrictive level and source combine (AND), and Detailed hides Debug rows", () => {
 		clearSessionLog();
 		recordSessionEvent( "debug", "Weather", "debug trace row" );

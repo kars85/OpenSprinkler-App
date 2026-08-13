@@ -4,7 +4,7 @@ import type { EventRow, StorageProvider, TelemetrySample } from "../../server/st
 
 const sample = ( ts: number ): TelemetrySample => ( {
 	ts, waterLevel: 34, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-	lastWeatherUpdate: ts - 60, activeStations: 1, rssi: -67, currentDraw: null,
+	lastWeatherUpdate: ts - 60, activeStations: 1, rssi: -67, currentDraw: null, sensor1: 0, sensor2: 0,
 	raw: JSON.stringify( { jc: {}, jo: {} } ),
 } );
 

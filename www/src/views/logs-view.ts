@@ -100,7 +100,7 @@ export function renderLogs( jl: JlResponse, jn: JnResponse, jo?: JoResponse, opt
 				const when = ev.ts + offset;
 				return {
 					when, level: ev.level, source: ev.source,
-					html: logRow( ev.level, formatControllerTimestamp( when ), ev.source === "weather" ? "cap" : "", ev.label, ev.detail ),
+					html: logRow( ev.level, formatControllerTimestamp( when ), ev.source === "weather" ? "cap" : ev.source === "sensors" ? "spec" : "", ev.label, ev.detail ),
 				};
 			} ),
 		].sort( ( a, b ) => b.when - a.when );

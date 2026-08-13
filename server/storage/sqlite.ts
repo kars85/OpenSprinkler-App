@@ -64,7 +64,7 @@ export class SqliteStorageProvider implements StorageProvider {
 			controller, ts: s.ts, waterLevel: s.waterLevel, rainDelay: s.rainDelay,
 			weatherErr: s.weatherErr, weatherRestricted: s.weatherRestricted,
 			lastWeatherUpdate: s.lastWeatherUpdate, activeStations: s.activeStations,
-			rssi: s.rssi, currentDraw: s.currentDraw, raw: s.raw,
+			rssi: s.rssi, currentDraw: s.currentDraw, sensor1: s.sensor1, sensor2: s.sensor2, raw: s.raw,
 		} ).execute();
 	}
 
@@ -96,6 +96,7 @@ export class SqliteStorageProvider implements StorageProvider {
 			weatherErr: telemetry.weatherErr, weatherRestricted: telemetry.weatherRestricted,
 			lastWeatherUpdate: telemetry.lastWeatherUpdate, activeStations: telemetry.activeStations,
 			rssi: telemetry.rssi, currentDraw: telemetry.currentDraw,
+			sensor1: telemetry.sensor1, sensor2: telemetry.sensor2,
 		} ).from( telemetry )
 			.where( and( eq( telemetry.controller, controller ), gte( telemetry.ts, q.fromTs ), lte( telemetry.ts, q.toTs ) ) )
 			.orderBy( asc( telemetry.ts ), asc( telemetry.id ) ).limit( limit ).offset( offset ).all();
@@ -131,6 +132,7 @@ export class SqliteStorageProvider implements StorageProvider {
 				weatherErr: telemetry.weatherErr, weatherRestricted: telemetry.weatherRestricted,
 				lastWeatherUpdate: telemetry.lastWeatherUpdate, activeStations: telemetry.activeStations,
 				rssi: telemetry.rssi, currentDraw: telemetry.currentDraw,
+				sensor1: telemetry.sensor1, sensor2: telemetry.sensor2,
 			} ).from( telemetry ).where( and(
 				eq( telemetry.controller, controller ), gte( telemetry.ts, q.fromTs ), lte( telemetry.ts, q.toTs ),
 				lte( telemetry.id, snapshotId ), after,
@@ -189,6 +191,7 @@ export class SqliteStorageProvider implements StorageProvider {
 			weatherErr: telemetry.weatherErr, weatherRestricted: telemetry.weatherRestricted,
 			lastWeatherUpdate: telemetry.lastWeatherUpdate, activeStations: telemetry.activeStations,
 			rssi: telemetry.rssi, currentDraw: telemetry.currentDraw,
+			sensor1: telemetry.sensor1, sensor2: telemetry.sensor2,
 		} ).from( telemetry ).where( eq( telemetry.controller, controller ) )
 			.orderBy( sql`${ telemetry.id } desc` ).limit( 1 ).all();
 		return ( r[ 0 ] as StoredTelemetry | undefined ) ?? null;
@@ -200,14 +203,14 @@ export class SqliteStorageProvider implements StorageProvider {
 		const raw = this.connection();
 		const insertTelemetry = raw.prepare(
 			"INSERT INTO telemetry (controller, ts, water_level, rain_delay, weather_err, weather_restricted, " +
-			"last_weather_update, active_stations, rssi, current_draw, raw) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			"last_weather_update, active_stations, rssi, current_draw, sensor1, sensor2, raw) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		);
 		const insertEvent = raw.prepare(
 			"INSERT INTO events (controller, ts, source, level, label, detail) VALUES (?, ?, ?, ?, ?, ?)",
 		);
 		raw.transaction( () => {
 			insertTelemetry.run( controller, s.ts, s.waterLevel, s.rainDelay, s.weatherErr, s.weatherRestricted,
-				s.lastWeatherUpdate, s.activeStations, s.rssi, s.currentDraw, s.raw );
+				s.lastWeatherUpdate, s.activeStations, s.rssi, s.currentDraw, s.sensor1, s.sensor2, s.raw );
 			for ( const e of eventRows ) insertEvent.run( controller, e.ts, e.source, e.level, e.label, e.detail );
 		} )();
 	}

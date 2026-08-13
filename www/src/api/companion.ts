@@ -19,7 +19,7 @@ export interface RunLogPoint { program: number; station: number; durationSec: nu
 /** One derived companion event (weather-error transitions, completed weather checks, …). */
 export interface CompanionLogEvent {
 	ts: number;                               // unix seconds, UTC (companion clock)
-	source: "weather" | "system";
+	source: "weather" | "sensors" | "system";
 	level: "normal" | "detail" | "debug";
 	label: string;
 	detail: string;
@@ -268,7 +268,7 @@ export async function fetchRunLog( companionBase: string, r: HistoryRange, optio
 	} );
 }
 
-const EVENT_SOURCES = new Set( [ "weather", "system" ] );
+const EVENT_SOURCES = new Set( [ "weather", "sensors", "system" ] );
 const EVENT_LEVELS = new Set( [ "normal", "detail", "debug" ] );
 const EVENT_LABEL_MAX = 40;
 const EVENT_DETAIL_MAX = 500;

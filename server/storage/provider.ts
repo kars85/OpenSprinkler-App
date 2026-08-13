@@ -9,6 +9,9 @@ export interface TelemetrySample {
 	activeStations: number;
 	rssi: number | null;
 	currentDraw: number | null;
+	/** Wired sensor states (jc.sn1/sn2); null on rows from before schema v3. */
+	sensor1: number | null;
+	sensor2: number | null;
 	raw: string;                 // allowlisted, non-secret compatibility metadata only
 }
 
@@ -20,7 +23,7 @@ export interface RunLogRow {
 	program: number; station: number; durationSec: number; endTs: number; flowGpm: number | null;
 }
 
-export type EventSource = "weather" | "system";
+export type EventSource = "weather" | "sensors" | "system";
 export type EventLevel = "normal" | "detail" | "debug";
 
 /** A derived observation (weather-error transition, completed weather call, …). Append-only. */

@@ -7,7 +7,7 @@ async function appWith( seedTs?: number ) {
 	const store = new SqliteStorageProvider( ":memory:" ); await store.init();
 	if ( seedTs ) await store.appendTelemetry( "c1", {
 		ts: seedTs, waterLevel: 34, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-		lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, raw: "{}",
+		lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, sensor1: 0, sensor2: 0, raw: "{}",
 	} );
 	const deps: ApiDeps = { store, controllerId: "c1", pollIntervalSec: 300, historyMaxDays: 90, now: () => 10000, lastError: () => null };
 	return createApiRoutes( deps );
@@ -35,6 +35,7 @@ describe( "GET /log", () => {
 		expect( detail.events.map( ( e: { ts: number } ) => e.ts ) ).toEqual( [ 1000, 2000 ] );
 		const system = await ( await app.request( "/log?from=0&to=9000&source=system" ) ).json();
 		expect( system.events.map( ( e: { ts: number } ) => e.ts ) ).toEqual( [ 3000 ] );
+		expect( ( await app.request( "/log?from=0&to=9000&source=sensors" ) ).status ).toBe( 200 );
 	} );
 
 	it( "rejects unknown level or source", async () => {
@@ -134,7 +135,7 @@ describe( "api routes", () => {
 		const store = new SqliteStorageProvider( ":memory:" ); await store.init();
 		for ( const ts of [ 100, 200, 300 ] ) await store.appendTelemetry( "c1", {
 			ts, waterLevel: ts, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-			lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, raw: "{}",
+			lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, sensor1: 0, sensor2: 0, raw: "{}",
 		} );
 		const app = createApiRoutes( {
 			store, controllerId: "c1", pollIntervalSec: 300, historyMaxDays: 90, now: () => 1000, lastError: () => null,
@@ -145,7 +146,7 @@ describe( "api routes", () => {
 		// Both rows sort inside the requested range, but were created after page one's snapshot.
 		for ( const ts of [ 50, 250 ] ) await store.appendTelemetry( "c1", {
 			ts, waterLevel: ts, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-			lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, raw: "{}",
+			lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, sensor1: 0, sensor2: 0, raw: "{}",
 		} );
 		const second = await ( await app.request(
 			`/history?from=0&to=1000&limit=2&cursor=${ encodeURIComponent( first.nextCursor ) }`,
@@ -166,7 +167,7 @@ describe( "api routes", () => {
 		const store = new SqliteStorageProvider( ":memory:" ); await store.init();
 		await store.appendTelemetry( "old", {
 			ts: 9900, waterLevel: 1, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-			lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, raw: "{}",
+			lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, sensor1: 0, sensor2: 0, raw: "{}",
 		} );
 		const app = createApiRoutes( {
 			store, controllerId: () => "current", pollIntervalSec: 300, historyMaxDays: 90, now: () => 10000, lastError: () => null,

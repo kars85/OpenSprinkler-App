@@ -13,7 +13,7 @@ import type { StoredTelemetry, TelemetrySample } from "../../server/storage/prov
 
 const sample = ( over: Partial<TelemetrySample> ): TelemetrySample => ( {
 	ts: 1000, waterLevel: 100, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-	lastWeatherUpdate: 500, activeStations: 0, rssi: null, currentDraw: null, raw: "{}",
+	lastWeatherUpdate: 500, activeStations: 0, rssi: null, currentDraw: null, sensor1: 0, sensor2: 0, raw: "{}",
 	...over,
 } );
 const stored = ( over: Partial<StoredTelemetry> ): StoredTelemetry => {
