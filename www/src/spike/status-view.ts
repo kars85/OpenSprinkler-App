@@ -10,6 +10,7 @@
 import type { JcResponse, JoResponse, Capabilities } from "../api/types";
 import { getForkTag } from "../api/client";
 import { formatMinutesOfDay, formatControllerDateTime } from "../api/time";
+import { otcStatus } from "../api/diagnostics";
 import { esc, helpTip } from "../ui/help";
 import { actionBar, actionButton } from "../ui/controls";
 import type { ForecastState } from "../api/weather";
@@ -53,6 +54,14 @@ function dotOk(): string {
 	return `<svg class="i-dot ok" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>`;
 }
 /** A ring-with-slash for a disabled/paused state (shape redundancy, not color-only). Decorative. */
+/** Plain-language OTC state (shared otcStatus mapping), with the status dot for clear states. */
+function otcCell( otcs: number | undefined ): string {
+	if ( typeof otcs !== "number" ) return "Not reported";
+	const status = otcStatus( otcs );
+	const dot = status.level === "ok" ? dotOk() : status.level === "error" ? dotOff() : "";
+	return `${ dot }<span>${ esc( status.text ) }</span>`;
+}
+
 function dotOff(): string {
 	return `<svg class="i-dot off" viewBox="0 0 12 12" aria-hidden="true" focusable="false">` +
 		`<circle cx="6" cy="6" r="4.3" fill="none" stroke="currentColor" stroke-width="1.6"/>` +
@@ -86,7 +95,7 @@ export function renderControllerStatus( jc: JcResponse, jo: JoResponse, caps: Ca
 		[ "Sunrise / Sunset", `${ esc( formatMinutesOfDay( jc.sunrise ) ) } / ${ esc( formatMinutesOfDay( jc.sunset ) ) }` ],
 		...( forecastLine === null ? [] : [ [ "Today's forecast", esc( forecastLine ),
 			"From your weather service; see the Weather tab for the full forecast." ] as [ string, string, string ] ] ),
-		[ "Cloud (OTC)", caps.otfCloud ? `status ${ esc( String( jc.otcs ?? "?" ) ) }` : "n/a",
+		[ "Cloud (OTC)", caps.otfCloud ? otcCell( jc.otcs ) : "n/a",
 			"OpenThings Cloud — OpenSprinkler's remote-access relay." ],
 	];
 	const body = rows.map( ( [ k, v, help ] ) =>
