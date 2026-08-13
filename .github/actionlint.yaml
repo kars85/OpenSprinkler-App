@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # VM 210 on the local Proxmox host (runners os-ci-1/2)
+  labels:
+    - proxmox
