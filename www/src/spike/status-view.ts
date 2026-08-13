@@ -50,6 +50,33 @@ export function forecastSummary( forecast: ForecastState | undefined, jc: JcResp
 }
 
 /** A filled dot for an OK/on state. Decorative — the adjacent text label carries the meaning (WCAG 1.4.1). */
+/**
+ * Physical sensor rows (rain/soil), shown only when a sensor is configured. An active rain or
+ * soil sensor pauses watering — say so in plain words (upstream parity: the legacy app surfaces
+ * this; hiding it while "Rain delay: Off" reads as "nothing is pausing watering", a lie in rain).
+ */
+function sensorRows( jc: JcResponse, jo: JoResponse ): Array<[ string, string, string? ]> {
+	const rows: Array<[ string, string, string? ]> = [];
+	const describe = ( type: number, active: 0 | 1 | undefined ): [ string, string ] | null => {
+		if ( type === 1 ) {
+			return [ "Rain sensor", active
+				? `${ dotOff() }<span>Rain detected — watering paused</span>`
+				: `${ dotOk() }<span>No rain detected</span>` ];
+		}
+		if ( type === 3 ) {
+			return [ "Soil sensor", active
+				? `${ dotOff() }<span>Soil is wet — watering paused</span>`
+				: `${ dotOk() }<span>Soil is dry</span>` ];
+		}
+		return null; // flow (2) reports on the flow row; program switch (240) is not a pause state
+	};
+	const first = describe( jo.sn1t, jc.sn1 );
+	if ( first ) rows.push( [ first[ 0 ], first[ 1 ], "A wired sensor on the controller; while triggered, scheduled watering is paused." ] );
+	const second = typeof jo.sn2t === "number" ? describe( jo.sn2t, jc.sn2 ) : null;
+	if ( second ) rows.push( [ second[ 0 ] + " (2)", second[ 1 ], "A second wired sensor; while triggered, scheduled watering is paused." ] );
+	return rows;
+}
+
 function dotOk(): string {
 	return `<svg class="i-dot ok" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><circle cx="6" cy="6" r="5" fill="currentColor"/></svg>`;
 }
@@ -90,6 +117,7 @@ export function renderControllerStatus( jc: JcResponse, jo: JoResponse, caps: Ca
 			"Scales every program's run time (100% = as programmed)." ],
 		[ "Rain delay", `${ jc.rd ? dotOff() : dotOk() }<span>${ jc.rd ? `Active until ${ esc( formatControllerDateTime( jc.rdst ) ) }` : "Off" }</span>`,
 			"A timed pause on all watering." ],
+		...sensorRows( jc, jo ),
 		[ "Weather restriction", caps.weatherRestricted && jc.wtrestr ? "Restricted" : "None",
 			"Watering is paused by a weather rule (e.g. a rain restriction)." ],
 		[ "Sunrise / Sunset", `${ esc( formatMinutesOfDay( jc.sunrise ) ) } / ${ esc( formatMinutesOfDay( jc.sunset ) ) }` ],
