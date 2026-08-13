@@ -44,8 +44,8 @@ describe( "weatherIconSvg", () => {
 		// The max bar leaves label headroom inside the panel, so every value label baseline must
 		// sit at least 10px below the title baseline (title y = PRECIP_TOP - 8 = 182).
 		const html = renderForecastChart( [
-			{ label: "Today", temp_min: 70, temp_max: 81, precip: 1.33, icon: "10d", description: "rain" },
-			{ label: "Thu", temp_min: 68, temp_max: 79, precip: 0.2, icon: "10d", description: "rain" },
+			{ label: "Today", temp_min: 70, temp_max: 81, precip: 1.33, description: "rain" },
+			{ label: "Thu", temp_min: 68, temp_max: 79, precip: 0.2, description: "rain" },
 		] );
 		const titleY = Number( /class="fc-title" x="\d+" y="(\d+)">Rain/.exec( html )![ 1 ] );
 		const labelYs = [ ...html.matchAll( /class="fc-val"[^>]*y="([\d.]+)"[^>]*>(?:1\.33|0\.2)</g ) ]
