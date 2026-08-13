@@ -230,6 +230,14 @@ export class BrowserDeviceSeam implements DeviceSeam {
 		return { ok: await this.checkPassword( password, signal ), pwHash: password };
 	}
 
+	/**
+	 * Validate a previously-issued credential (the value authenticate() returned) without a
+	 * password prompt — the session-restore path. Same /sp no-op round-trip as authenticate().
+	 */
+	async validatePwHash( pwHash: string, signal?: AbortSignal ): Promise<boolean> {
+		return this.checkPassword( pwHash, signal );
+	}
+
 	/** `GET /sp?pw=&npw=&cpw=` → `{result}`; firmware success codes are integer 0 or 1. */
 	private async checkPassword( pass: string, signal?: AbortSignal ): Promise<boolean> {
 		const base = this.config.baseUrl.endsWith( "/" ) ? this.config.baseUrl : this.config.baseUrl + "/";

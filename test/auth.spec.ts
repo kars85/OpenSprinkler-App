@@ -46,6 +46,16 @@ describe( "seam.authenticate (version gating)", () => {
 		expect( r.pwHash ).toBe( "plain" );
 	} );
 
+	it( "validatePwHash round-trips a saved credential without a password prompt", async () => {
+		const f = mockSp( 1 ); globalThis.fetch = f;
+		const seam = new BrowserDeviceSeam( { baseUrl: "http://d/" } );
+		expect( await seam.validatePwHash( md5( "secret" ) ) ).toBe( true );
+		const url = String( ( f as unknown as { mock: { calls: unknown[][] } } ).mock.calls[ 0 ][ 0 ] );
+		expect( url ).toContain( "/sp?pw=" + md5( "secret" ) );
+		globalThis.fetch = mockSp( 2 );
+		expect( await new BrowserDeviceSeam( { baseUrl: "http://d/" } ).validatePwHash( "0".repeat( 32 ) ) ).toBe( false );
+	} );
+
 	it( "rejects when /sp returns result > 1", async () => {
 		const f = mockSp( 2 );
 		globalThis.fetch = f;
