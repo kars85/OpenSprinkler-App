@@ -409,7 +409,8 @@ describe( "dashboard host concurrency", () => {
 		const mount = document.createElement( "div" );
 		document.body.appendChild( mount );
 		const getControllerStatus = vi.fn( async () => baseline.jc );
-		const controller = mountDashboard( deps( mount, { getControllerStatus }, async () => baseline ) );
+		const load = vi.fn( async () => baseline );
+		const controller = mountDashboard( deps( mount, { getControllerStatus }, load ) );
 		await settlePromises();
 		mount.querySelector<HTMLButtonElement>( '[data-tab="Programs"]' )!.click();
 
@@ -417,14 +418,19 @@ describe( "dashboard host concurrency", () => {
 		document.dispatchEvent( new Event( "visibilitychange" ) );
 		await vi.advanceTimersByTimeAsync( 12_000 );
 		expect( getControllerStatus ).not.toHaveBeenCalled();
-		expect( mount.textContent ).toContain( "Controller data is stale" );
+		expect( mount.textContent ).toContain( "Waiting for the controller" );
+		expect( mount.textContent ).not.toContain( "Controller not responding" );
 		expect( mount.querySelector<HTMLButtonElement>( '[data-action="program-delete"]' )?.disabled ).toBe( true );
+		await vi.advanceTimersByTimeAsync( 33_000 );
+		expect( mount.textContent ).toContain( "Controller not responding" );
 
 		hidden = false;
 		document.dispatchEvent( new Event( "visibilitychange" ) );
 		await settlePromises();
-		expect( getControllerStatus ).toHaveBeenCalledTimes( 1 );
-		expect( mount.textContent ).not.toContain( "Controller data is stale" );
+		// 45s hidden exceeds the 20s configuration cadence, so resume takes the FULL reload path.
+		expect( load ).toHaveBeenCalledTimes( 2 );
+		expect( mount.textContent ).not.toContain( "Controller not responding" );
+		expect( mount.textContent ).not.toContain( "Waiting for the controller" );
 		expect( mount.querySelector<HTMLButtonElement>( '[data-action="program-delete"]' )?.disabled ).toBe( false );
 
 		controller.destroy();
@@ -457,15 +463,19 @@ describe( "dashboard host concurrency", () => {
 
 		await vi.advanceTimersByTimeAsync( 12_000 );
 		expect( attempts ).toEqual( [ 4_000, 8_000 ] );
-		expect( mount.textContent ).toContain( "Controller data is stale" );
+		expect( mount.textContent ).toContain( "Waiting for the controller" );
+		expect( mount.textContent ).not.toContain( "Controller not responding" );
 		expect( mount.querySelector<HTMLButtonElement>( '[data-action="program-delete"]' )?.disabled ).toBe( true );
 		await vi.advanceTimersByTimeAsync( 20_000 );
 		expect( attempts ).toEqual( [ 4_000, 8_000, 16_000, 32_000 ] );
+		await vi.advanceTimersByTimeAsync( 13_000 );
+		expect( mount.textContent ).toContain( "Controller not responding" );
 
 		fail = false;
-		await vi.advanceTimersByTimeAsync( 30_000 );
+		await vi.advanceTimersByTimeAsync( 17_000 );
 		expect( attempts ).toEqual( [ 4_000, 8_000, 16_000, 32_000, 62_000 ] );
-		expect( mount.textContent ).not.toContain( "Controller data is stale" );
+		expect( mount.textContent ).not.toContain( "Controller not responding" );
+		expect( mount.textContent ).not.toContain( "Waiting for the controller" );
 		expect( mount.querySelector<HTMLButtonElement>( '[data-action="program-delete"]' )?.disabled ).toBe( false );
 		expect( d.toast ).not.toHaveBeenCalled();
 

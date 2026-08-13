@@ -118,6 +118,9 @@ export interface DashboardController {
 const RUNTIME_REFRESH_MS = 4000;
 const CONFIG_REFRESH_MS = 20000;
 const CONTROLLER_STALE_MS = 12000;
+// LAN controllers (esp. in bad weather / weak wifi) routinely miss a poll or two; the red
+// unreachable card waits for a sustained outage, while the muted waiting note appears early.
+const CONTROLLER_UNREACHABLE_MS = 45000;
 const FAILURE_BACKOFF_MS = [ 4000, 8000, 16000, 30000 ] as const;
 // The service caches forecasts to a six-hour boundary; a slow refresh + a shorter error retry.
 const FORECAST_REFRESH_MS = 30 * 60 * 1000;
@@ -129,6 +132,22 @@ interface FullRefreshOptions {
 	automatic: boolean;
 	discoverHistory: boolean;
 	surfaceError: boolean;
+}
+
+/** Browser fetch failures leak class names ("TypeError: Failed to fetch"); name the scope instead. */
+export function publicConnectionDetail( detail: string | null ): string | null {
+	if ( detail === null ) return null;
+	return /failed to fetch|networkerror|load failed|abort/i.test( detail )
+		? "The controller did not respond." : detail;
+}
+
+/** Connection tier for the banner: fresh / waiting (quiet note) / unreachable (red card). */
+export function connectionTier( now: number, lastSuccessAt: number | null ): "fresh" | "waiting" | "unreachable" {
+	if ( lastSuccessAt === null ) return "fresh";
+	const age = now - lastSuccessAt;
+	if ( age >= CONTROLLER_UNREACHABLE_MS ) return "unreachable";
+	if ( age >= CONTROLLER_STALE_MS ) return "waiting";
+	return "fresh";
 }
 
 function sameSnapshot( a: unknown, b: unknown ): boolean {
@@ -388,15 +407,20 @@ export function mountDashboard( deps: HostDeps ): DashboardController {
 	function scheduleStaleTransition(): void {
 		clearStaleTimer();
 		if ( disposed || lastControllerSuccessAt === null ) return;
-		const remaining = CONTROLLER_STALE_MS - ( Date.now() - lastControllerSuccessAt );
-		if ( remaining <= 0 ) {
+		const age = Date.now() - lastControllerSuccessAt;
+		// Repaint at whichever tier boundary comes next (waiting at 12s, unreachable at 45s).
+		const next = age < CONTROLLER_STALE_MS ? CONTROLLER_STALE_MS - age
+			: age < CONTROLLER_UNREACHABLE_MS ? CONTROLLER_UNREACHABLE_MS - age
+			: 0;
+		if ( next <= 0 ) {
 			updateConnectionState();
 			return;
 		}
 		staleTimer = setTimeout( () => {
 			staleTimer = null;
 			updateConnectionState();
-		}, remaining );
+			scheduleStaleTransition();
+		}, next );
 	}
 
 	function noteControllerSuccess( configuration = false ): void {
@@ -445,13 +469,19 @@ export function mountDashboard( deps: HostDeps ): DashboardController {
 	}
 
 	function connectionStateHtml(): string {
-		if ( controllerIsStale() ) {
-			const detail = automaticError ?? lastError;
+		const tier = connectionTier( Date.now(), data === null ? null : lastControllerSuccessAt );
+		if ( tier === "unreachable" ) {
+			const detail = publicConnectionDetail( automaticError ?? lastError );
 			return `<div class="error-card" role="status">` +
-				`<div class="error-title"><span>Controller data is stale</span></div>` +
-				`<p class="error-detail">The last successful controller response was at least 12 seconds ago.` +
+				`<div class="error-title"><span>Controller not responding</span></div>` +
+				`<p class="error-detail">No response for over ${ Math.round( CONTROLLER_UNREACHABLE_MS / 1000 ) } seconds; retrying automatically.` +
 				( detail ? ` ${ esc( detail ) }` : "" ) + `</p>` +
-				`<button class="action primary" type="button" data-action="retry">Retry</button></div>`;
+				`<button class="action primary" type="button" data-action="retry">Retry now</button></div>`;
+		}
+		if ( tier === "waiting" ) {
+			// A missed poll or two is normal on a LAN device — keep it quiet, keep the data visible,
+			// and keep writes locked (interactionsAreBlocked still keys off the 12s threshold).
+			return `<p class="info-note muted" role="status">Waiting for the controller — showing the last update while it reconnects.</p>`;
 		}
 		return lastError ? errorCard( lastError ) : "";
 	}
