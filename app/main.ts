@@ -190,15 +190,17 @@ async function boot(): Promise<void> {
 		// Read-only display forecast, fetched directly from the weather service (see
 		// docs/PLATFORM-ROADMAP.md — approved exception to the controller-only data rule).
 		loadForecast: ( jc, signal ) => fetchForecast( jc, { signal } ),
-		// Hardware verification (docs/HARDWARE-VERIFICATION.md) passed 2026-08-12 against fwv 221:
-		// §1a live read pipeline, §4 auth, §5 rain-delay round-trip, §6d throwaway-program
+		// Hardware verification (docs/HARDWARE-VERIFICATION.md) passed 2026-08-12/13 against fwv 221:
+		// §1a live read pipeline, §4 auth, §5 rain-delay round-trip, §6c enable/disable toggle
+		// (operator-requested; run from the armed resting state as capture en=1 -> disable ->
+		// restore, 5.7h clear window, sbits watched clear), §6d throwaway-program
 		// create/toggle/delete, §6e overcurrent clear, §7a/7c/7d atomic settings write-backs,
 		// §9 clean close-out diff (results recorded outside version control per the runbook).
-		// "controller-enable" stays locked: §6c re-arms live scheduling and remains operator-gated.
 		mutationProof: {
 			hardwareVerified: true,
 			permissions: [
-				"rain-delay", "clear-overcurrent", "general-options", "weather-options", "stations",
+				"controller-enable", "rain-delay", "clear-overcurrent", "general-options",
+				"weather-options", "stations",
 				"program-create", "program-edit", "program-toggle", "program-delete",
 			],
 		},
