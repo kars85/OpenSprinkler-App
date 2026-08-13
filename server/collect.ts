@@ -34,6 +34,8 @@ export function mapTelemetry( jc: JcResponse, jo: JoResponse, now: number ): Tel
 		activeStations: countActiveStations( jc.sbits ),
 		rssi: typeof jc.RSSI === "number" && Number.isFinite( jc.RSSI ) ? jc.RSSI : null,
 		currentDraw: typeof jc.curr === "number" && Number.isFinite( jc.curr ) ? jc.curr : null,
+		sensor1: num( jc.sn1 ),
+		sensor2: num( jc.sn2 ),
 		raw: JSON.stringify( safeRaw ),
 	};
 }
@@ -74,7 +76,8 @@ export async function collectOnce(
 		const sample = mapTelemetry( jcResult.value, joResult.value, opts.now );
 		// One transaction for the sample and its derived events: a crash between separate writes
 		// would commit the sample as the next baseline and lose the transition forever.
-		const derived = diffTelemetryEvents( eventBaseline, sample );
+		const derived = diffTelemetryEvents( eventBaseline, sample,
+			{ sensor1Type: num( joResult.value.sn1t ), sensor2Type: num( joResult.value.sn2t ) } );
 		await store.appendSample( controllerId, sample, derived );
 		telemetry = true;
 		newEvents = derived.length;

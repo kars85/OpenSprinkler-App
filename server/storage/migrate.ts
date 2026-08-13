@@ -1,6 +1,6 @@
 import type BetterSqlite3 from "better-sqlite3";
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 /** Idempotent schema creation (FR-14). Single-process, in-container; safe on every boot. */
 export function migrate( db: BetterSqlite3.Database ): void {
@@ -22,6 +22,8 @@ export function migrate( db: BetterSqlite3.Database ): void {
 			active_stations INTEGER NOT NULL,
 			rssi INTEGER,
 			current_draw INTEGER,
+			sensor1 INTEGER,
+			sensor2 INTEGER,
 			raw TEXT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS telemetry_ctrl_ts ON telemetry ( controller, ts );
@@ -58,6 +60,13 @@ export function migrate( db: BetterSqlite3.Database ): void {
 		db.exec( "VACUUM" );
 		db.pragma( "wal_checkpoint(TRUNCATE)" );
 	}
-	// Schema version 2 only adds the `events` table (created above for every version).
+	// Schema version 3 adds nullable sensor-state columns to telemetry. The CREATE above covers
+	// fresh databases; existing ones get existence-guarded ALTERs (legacy rows stay NULL, which
+	// the event differ treats as "no baseline" rather than a transition).
+	const telemetryColumns = ( db.pragma( "table_info(telemetry)" ) as Array<{ name: string }> ).map( ( c ) => c.name );
+	for ( const column of [ "sensor1", "sensor2" ] ) {
+		if ( !telemetryColumns.includes( column ) ) db.exec( `ALTER TABLE telemetry ADD COLUMN ${ column } INTEGER` );
+	}
+	// Schema version 2 added the `events` table (created above for every version).
 	if ( version < SCHEMA_VERSION ) db.pragma( `user_version = ${ SCHEMA_VERSION }` );
 }

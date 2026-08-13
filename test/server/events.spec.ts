@@ -3,12 +3,12 @@
  * transitions the firmware's own /jl log does not already record.
  */
 import { describe, it, expect } from "vitest";
-import { diffTelemetryEvents } from "../../server/events";
+import { diffTelemetryEvents, type SensorTypes } from "../../server/events";
 import type { StoredTelemetry, TelemetrySample } from "../../server/storage/provider";
 
 const base = ( over: Partial<TelemetrySample> = {} ): TelemetrySample => ( {
 	ts: 1000, waterLevel: 100, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-	lastWeatherUpdate: 500, activeStations: 0, rssi: null, currentDraw: null, raw: "{}",
+	lastWeatherUpdate: 500, activeStations: 0, rssi: null, currentDraw: null, sensor1: 0, sensor2: 0, raw: "{}",
 	...over,
 } );
 const stored = ( over: Partial<StoredTelemetry> = {} ): StoredTelemetry => {
@@ -64,6 +64,33 @@ describe( "diffTelemetryEvents", () => {
 		expect( out[ 0 ]!.detail ).toContain( "recovered" );
 		expect( out[ 1 ]!.detail ).toContain( "restricted" );
 		expect( out[ 2 ]!.detail ).toContain( "70%" );
+	} );
+
+	it( "reports a rain-sensor activation the moment it happens (source: sensors)", () => {
+		const types: SensorTypes = { sensor1Type: 1, sensor2Type: 0 };
+		const on = diffTelemetryEvents( stored( { sensor1: 0 } ), base( { sensor1: 1 } ), types );
+		expect( on ).toHaveLength( 1 );
+		expect( on[ 0 ] ).toMatchObject( { source: "sensors", level: "normal", label: "Rain" } );
+		expect( on[ 0 ]!.detail ).toContain( "Rain sensor activated — scheduled watering is paused." );
+		const off = diffTelemetryEvents( stored( { sensor1: 1 } ), base( { sensor1: 0 } ), types );
+		expect( off[ 0 ]!.detail ).toContain( "cleared; scheduled watering resumes" );
+	} );
+
+	it( "uses soil wording for soil sensors and suffixes the second sensor", () => {
+		const types: SensorTypes = { sensor1Type: 3, sensor2Type: 1 };
+		const out = diffTelemetryEvents(
+			stored( { sensor1: 0, sensor2: 0 } ), base( { sensor1: 1, sensor2: 1 } ), types );
+		expect( out ).toHaveLength( 2 );
+		expect( out[ 0 ]!.detail ).toContain( "Soil sensor activated" );
+		expect( out[ 1 ]!.detail ).toContain( "Rain sensor (2) activated" );
+	} );
+
+	it( "derives nothing for flow meters, unknown types, or a pre-v3 null baseline", () => {
+		expect( diffTelemetryEvents( stored( { sensor1: 0 } ), base( { sensor1: 1 } ),
+			{ sensor1Type: 2, sensor2Type: 0 } ) ).toEqual( [] );          // flow meter
+		expect( diffTelemetryEvents( stored( { sensor1: 0 } ), base( { sensor1: 1 } ) ) ).toEqual( [] ); // no types
+		expect( diffTelemetryEvents( stored( { sensor1: null } ), base( { sensor1: 1 } ),
+			{ sensor1Type: 1, sensor2Type: 0 } ) ).toEqual( [] );          // legacy row baseline
 	} );
 
 	it( "stamps events with the current sample's collector timestamp", () => {

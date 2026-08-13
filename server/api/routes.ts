@@ -19,7 +19,7 @@ interface ParsedQuery { fromTs: number; toTs: number; limit: number; cursorToken
 type CursorKind = string;
 
 const EVENT_LEVELS = new Set<string>( [ "normal", "detail", "debug" ] );
-const EVENT_SOURCES = new Set<string>( [ "weather", "system" ] );
+const EVENT_SOURCES = new Set<string>( [ "weather", "sensors", "system" ] );
 
 const PUBLIC_LAST_ERRORS = new Set( [
 	"database unavailable", "database operation failed", "controller authentication failed",

@@ -14,10 +14,42 @@
 import { weatherErrorText } from "../www/src/api/diagnostics";
 import type { EventRow, StoredTelemetry, TelemetrySample } from "./storage/provider";
 
-export function diffTelemetryEvents( prev: StoredTelemetry | null, cur: TelemetrySample ): EventRow[] {
+/** Firmware sensor types (jo.sn1t/sn2t) whose activation pauses watering. */
+const PAUSE_SENSOR_NAMES: Record<number, string> = { 1: "Rain sensor", 3: "Soil sensor" };
+
+export interface SensorTypes { sensor1Type: number; sensor2Type: number; }
+
+function sensorTransition(
+	ts: number, name: string, active: boolean, suffix: string,
+): EventRow {
+	return {
+		ts, source: "sensors", level: "normal", label: name.split( " " )[ 0 ]!,
+		detail: active
+			? `${ name }${ suffix } activated — scheduled watering is paused.`
+			: `${ name }${ suffix } cleared; scheduled watering resumes.`,
+	};
+}
+
+export function diffTelemetryEvents(
+	prev: StoredTelemetry | null, cur: TelemetrySample, sensorTypes?: SensorTypes,
+): EventRow[] {
 	if ( !prev ) return [];
 	const out: EventRow[] = [];
 	const base = { ts: cur.ts, source: "weather" as const, label: "Weather" };
+
+	// Wired pause-sensor transitions. The firmware's own /jl records an activation only after it
+	// ENDS (a retroactive duration row), so an ongoing activation is invisible there — this is the
+	// only log surface that can say "the rain sensor is pausing watering right now". A null
+	// baseline value (rows from before schema v3) derives nothing rather than a false transition.
+	const sensors: Array<[ number | null, number | null, number | undefined, string ]> = [
+		[ prev.sensor1, cur.sensor1, sensorTypes?.sensor1Type, "" ],
+		[ prev.sensor2, cur.sensor2, sensorTypes?.sensor2Type, " (2)" ],
+	];
+	for ( const [ was, now, type, suffix ] of sensors ) {
+		const name = type === undefined ? undefined : PAUSE_SENSOR_NAMES[ type ];
+		if ( !name || was === null || was === undefined || now === null || now === undefined ) continue;
+		if ( was !== now ) out.push( sensorTransition( cur.ts, name, now === 1, suffix ) );
+	}
 
 	if ( cur.weatherErr !== prev.weatherErr ) {
 		out.push( {

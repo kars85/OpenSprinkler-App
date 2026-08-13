@@ -12,6 +12,8 @@ export const telemetry = sqliteTable( "telemetry", {
 	activeStations: integer( "active_stations" ).notNull(),
 	rssi: integer( "rssi" ),
 	currentDraw: integer( "current_draw" ),
+	sensor1: integer( "sensor1" ),
+	sensor2: integer( "sensor2" ),
 	raw: text( "raw" ).notNull(),
 }, ( t ) => ( { byCtrlTs: index( "telemetry_ctrl_ts" ).on( t.controller, t.ts ) } ) );
 

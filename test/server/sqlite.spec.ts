@@ -14,11 +14,11 @@ describe( "SQLite file security", () => {
 	it( "rejects a database from a newer schema before creating or changing tables", () => {
 		const db = new Database( ":memory:" );
 		try {
-			db.pragma( "user_version = 3" );
+			db.pragma( "user_version = 4" );
 			expect( () => migrate( db ) ).toThrow( /newer than supported/i );
 			const tables = db.prepare( "SELECT name FROM sqlite_master WHERE type = 'table'" ).all();
 			expect( tables ).toEqual( [] );
-			expect( db.pragma( "user_version", { simple: true } ) ).toBe( 3 );
+			expect( db.pragma( "user_version", { simple: true } ) ).toBe( 4 );
 		} finally { db.close(); }
 	} );
 
@@ -42,7 +42,7 @@ describe( "SQLite file security", () => {
 			await store.init();
 			await store.appendTelemetry( "controller", {
 				ts: 2, waterLevel: 100, rainDelay: 0, weatherErr: 0, weatherRestricted: 0,
-				lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, raw: "{}",
+				lastWeatherUpdate: 0, activeStations: 0, rssi: null, currentDraw: null, sensor1: 0, sensor2: 0, raw: "{}",
 			} );
 			expect( ( await stat( path ) ).mode & 0o777 ).toBe( 0o600 );
 			expect( ( await stat( `${ path }-wal` ) ).mode & 0o777 ).toBe( 0o600 );
@@ -64,6 +64,8 @@ describe( "SQLite file security", () => {
 			// stamps v2), then strip it back to the v1 shape — no events table, user_version 1.
 			migrate( db );
 			db.exec( "DROP TABLE events" );
+			db.exec( "ALTER TABLE telemetry DROP COLUMN sensor1" );
+			db.exec( "ALTER TABLE telemetry DROP COLUMN sensor2" );
 			db.pragma( "user_version = 1" );
 			db.prepare( `INSERT INTO telemetry (
 				controller, ts, water_level, rain_delay, weather_err, weather_restricted,
@@ -81,7 +83,10 @@ describe( "SQLite file security", () => {
 			expect( ( db.prepare( "SELECT count(*) AS c FROM run_log" ).get() as { c: number } ).c ).toBe( 1 );
 			const tables = ( db.prepare( "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'events'" ).all() );
 			expect( tables ).toHaveLength( 1 );
-			expect( db.pragma( "user_version", { simple: true } ) ).toBe( 2 );
+			// v3 sensor columns arrive via guarded ALTER; the pre-existing row reads back NULL.
+			const migrated = db.prepare( "SELECT sensor1, sensor2 FROM telemetry" ).get() as { sensor1: number | null; sensor2: number | null };
+			expect( migrated ).toEqual( { sensor1: null, sensor2: null } );
+			expect( db.pragma( "user_version", { simple: true } ) ).toBe( 3 );
 		} finally { db.close(); }
 	} );
 
