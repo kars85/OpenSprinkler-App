@@ -12,6 +12,9 @@ import { esc } from "./help";
 /** Chart geometry (viewBox units). TEMP_TOP clears the panel title plus a max-height bar's value
  * label (label baseline = TEMP_TOP - 6, 12px glyphs): keep it ≥ title baseline + 22. */
 const COL_W = 64, PAD_X = 10, TEMP_TOP = 40, TEMP_H = 110, PANEL_GAP = 40, PRECIP_H = 56;
+// A max-height rain bar's value label sits above the bar top; reserve that room inside the
+// panel so the label can never climb into the "Rain (in)" title (which lives in PANEL_GAP).
+const PRECIP_LABEL_ROOM = 16;
 const PRECIP_TOP = TEMP_TOP + TEMP_H + PANEL_GAP;
 const DAY_LABEL_Y = PRECIP_TOP + PRECIP_H + 18;
 const HEIGHT = DAY_LABEL_Y + 10;
@@ -53,7 +56,7 @@ export function renderForecastChart( days: ForecastChartDay[] ): string {
 		const cx = PAD_X + i * COL_W + COL_W / 2;
 		const yHi = tempY( day.temp_max ), yLo = tempY( day.temp_min );
 		const barH = Math.max( 8, yLo - yHi );
-		const rainH = day.precip > 0 ? Math.max( 3, day.precip / precipMax * PRECIP_H ) : 0;
+		const rainH = day.precip > 0 ? Math.max( 3, day.precip / precipMax * ( PRECIP_H - PRECIP_LABEL_ROOM ) ) : 0;
 		const rain = round2( day.precip );
 		const tempBar = `<rect class="fc-temp" x="${ cx - 7 }" y="${ yHi }" width="14" height="${ barH }" rx="4"/>` +
 			`<text class="fc-val" x="${ cx }" y="${ yHi - 6 }" text-anchor="middle">${ round1( day.temp_max ) }°</text>` +
