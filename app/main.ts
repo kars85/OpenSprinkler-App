@@ -119,7 +119,24 @@ async function boot(): Promise<void> {
 		confirm: ( message ) => window.confirm( message ),
 		probe: () => new OsApiClient( new BrowserDeviceSeam( { baseUrl } ) ).probeBootstrap(),
 		validatePreflight: assertModernPreflightVersion,
-		login: ( firmwareVersion ) => runLogin( mount, baseUrl, firmwareVersion ),
+		// Session restore: a validated credential survives refresh in sessionStorage (the same
+		// tab-scoped policy as the device target and companion session — gone when the tab closes).
+		// A stale credential (changed password) is discarded and falls back to the prompt; a
+		// transient validation error also falls back to the prompt WITHOUT discarding, since the
+		// prompt itself re-validates and re-saves.
+		login: async ( firmwareVersion ) => {
+			const saved = storedValue( "opensprinkler.pwHash" );
+			if ( saved ) {
+				try {
+					const seam = new BrowserDeviceSeam( { baseUrl, ver: firmwareVersion } );
+					if ( await seam.validatePwHash( saved ) ) return saved;
+					clearValue( "opensprinkler.pwHash" );
+				} catch { /* device unreachable right now: let the prompt handle retry messaging */ }
+			}
+			const pwHash = await runLogin( mount, baseUrl, firmwareVersion );
+			storeValue( "opensprinkler.pwHash", pwHash );
+			return pwHash;
+		},
 		authenticate: async ( { firmwareVersion, ignoresPassword, pwHash } ) => {
 			const api = new OsApiClient( new BrowserDeviceSeam( {
 				baseUrl, ver: firmwareVersion, ipas: ignoresPassword, pwHash,
