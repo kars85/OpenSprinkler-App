@@ -92,7 +92,7 @@ capture the §0 baseline first and **click nothing**.
 | §3 OTC remote / mixed-content (PRD §4 #1) | ⬜ Gated (needs OTC token + HTTPS build + browser). |
 | §4 auth | ✅ 2026-08-12 — wrong `pw` → `result:2` on read and write; unauth `/jo` is the `{fwv}` stub; correct hash authorizes. |
 | §5 reversible write proof (rain delay) | ✅ 2026-08-12 — set→verify→cancel via harness; `rd/rdst` independently re-read at baseline. |
-| §6 control smoke test (PHYSICAL) | ◐ §6d ✅ + §6e ✅ 2026-08-12 (throwaway program create/toggle/delete; `ocs` clear). §6a–c actuation/enable remain operator-gated SKIP. |
+| §6 control smoke test (PHYSICAL) | ◐ §6d ✅ + §6e ✅ 2026-08-12; §6c ✅ 2026-08-13 operator-requested (armed resting state: capture `en=1` → disable → restore captured value; 5.7 h clear window; `sbits` watched clear 30 s post-restore). §6a–b actuation remains operator-gated SKIP. |
 | §7 settings write-back (atomic) | ✅ 2026-08-12 — §7a dname, §7c uwt (wsp/wto byte-identical), §7d disabled-station rename (stn_dis byte-identical); all restored + verified. |
 | §8 rollback drill | ⬜ Deferred to the real rollout. If `/jc.jsp` is blank, first normalize it to the explicit compiled-default URL and verify that nonblank rollback value; never rely on `/cu?jsp=` to recreate an empty setting. |
 | §9 final close-out diff | ✅ 2026-08-12 — full-baseline diff clean (only the controller's own `lwc` weather-call timestamp advanced). |
