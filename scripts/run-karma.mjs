@@ -2,7 +2,7 @@
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, readdirSync } from "node:fs";
 import { mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -101,6 +101,26 @@ export function findBrowser(env = process.env) {
 		if (isExecutable(candidate)) {
 			return candidate;
 		}
+	}
+
+	// Playwright's browser cache is the common source on dev boxes and CI runners that have no
+	// system Chrome (this repo's container tests already pull Playwright images). Newest first.
+	const playwrightCache = join(process.env.HOME || "", ".cache", "ms-playwright");
+	try {
+		const entries = readdirSync(playwrightCache)
+			.filter((name) => name.startsWith("chromium-"))
+			.sort()
+			.reverse();
+		for (const entry of entries) {
+			for (const sub of ["chrome-linux", "chrome-linux64"]) {
+				const candidate = join(playwrightCache, entry, sub, "chrome");
+				if (isExecutable(candidate)) {
+					return candidate;
+				}
+			}
+		}
+	} catch {
+		// no playwright cache — fall through to the error below
 	}
 
 	throw new Error(
