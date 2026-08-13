@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   validate-source:
-    runs-on: ubuntu-latest
+    runs-on: proxmox
     outputs:
       publish_latest: ${{ steps.source.outputs.publish_latest }}
     steps:
@@ -90,7 +90,7 @@ jobs:
 
   build-push:
     needs: validate-source
-    runs-on: ubuntu-latest
+    runs-on: proxmox
     environment:
       name: companion-image-publish
     steps:

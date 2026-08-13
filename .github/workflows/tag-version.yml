@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: proxmox
     outputs:
       version: ${{ steps.gitversion.outputs.semVer }}
     steps:
@@ -48,7 +48,7 @@ jobs:
 
   tag:
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: proxmox
     permissions:
       contents: write
     steps:
