@@ -537,6 +537,7 @@ describe( "Legacy regression checks", function() {
 
 	it( "settles the program reorder loader when the follow-up refresh fails", function( done ) {
 		var sandbox = sinon.createSandbox(),
+			clock = sandbox.useFakeTimers( { now: Date.now() } ),
 			oldController = OSApp.currentSession.controller,
 			page;
 
@@ -574,6 +575,7 @@ describe( "Legacy regression checks", function() {
 					OSApp.currentSession.controller = oldController;
 				}
 			}, 10 );
+			clock.tick( 1000 );
 		} catch ( error ) {
 			if ( page ) page.remove();
 			sandbox.restore();
