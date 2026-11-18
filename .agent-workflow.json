@@ -1,0 +1,30 @@
+{
+  "name": "OpenSprinkler-App",
+  "repository": "kars85/OpenSprinkler-App",
+  "project_id": "7c010581-d9b4-4f5e-b55a-415ce6855dbf",
+  "description": "Irrigation controller application",
+  "skills": [
+    "opensprinkler-app-abc",
+    "opensprinkler-app-intake"
+  ],
+  "verification_commands": [
+    "python3 -c 'import yaml' && python3 scripts/test_agent_workflow.py",
+    "npm run lint",
+    "npm run typecheck",
+    "npm run test:contract",
+    "npm run test:server",
+    "npm run build:app"
+  ],
+  "verification_note": "Coordinate controller API changes with Firmware and Weather. Live watering and production publishing require task-specific authorization.",
+  "ci_workflows": [
+    ".github/workflows/agent-workflow.yml",
+    ".github/workflows/app-store-connect.yml",
+    ".github/workflows/companion-image.yml",
+    ".github/workflows/firebase-hosting-next.yml",
+    ".github/workflows/firebase-hosting.yml",
+    ".github/workflows/google-play.yml",
+    ".github/workflows/tag-version.yml",
+    ".github/workflows/test.yml"
+  ],
+  "setup_issue": "https://github.com/kars85/OpenSprinkler-App/issues/42"
+}
