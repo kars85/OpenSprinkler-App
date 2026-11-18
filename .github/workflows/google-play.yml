@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches: [master]
 
 permissions: {}
 
 concurrency:
-  group: google-play-deploy
-  cancel-in-progress: false
+  group: google-play-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate_and_build_unsigned:
@@ -49,6 +51,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools
 
       - name: Install Android SDK packages (API 35)
         run: |
