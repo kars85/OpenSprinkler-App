@@ -10,8 +10,8 @@ on:
 permissions: {}
 
 concurrency:
-  group: google-play-deploy
-  cancel-in-progress: false
+  group: google-play-${{ github.event_name == 'pull_request' && github.ref || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate_and_build_unsigned:
