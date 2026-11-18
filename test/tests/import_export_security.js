@@ -356,6 +356,7 @@ describe( "Import/export security boundaries", function() {
 
 	it( "preflights, creates, verifies, and remaps backup sensors before programs", function( done ) {
 		var sandbox = sinon.createSandbox(),
+			clock = sandbox.useFakeTimers( { now: Date.now() } ),
 			originalController = OSApp.currentSession.controller,
 			backup = currentBackup(),
 			sourceSensor = {
@@ -442,6 +443,7 @@ describe( "Import/export security boundaries", function() {
 
 			OSApp.ImportExport.importConfig( backup );
 			setTimeout( function() { finish( new Error( "sensor restore did not complete" ) ); }, 750 );
+			clock.tick( 1000 );
 		} catch ( error ) {
 			finish( error );
 		}
@@ -515,6 +517,7 @@ describe( "Import/export security boundaries", function() {
 
 	it( "rejects unrelated mutations until the restore releases its private lease", function( done ) {
 		var sandbox = sinon.createSandbox(),
+			clock = sandbox.useFakeTimers( { now: Date.now() } ),
 			backup = currentBackup(),
 			oldSession = {
 				controller: OSApp.currentSession.controller,
@@ -597,6 +600,7 @@ describe( "Import/export security boundaries", function() {
 					finish( error );
 				}
 			}, 25 );
+			clock.tick( 1000 );
 		} catch ( error ) {
 			finish( error );
 		}
