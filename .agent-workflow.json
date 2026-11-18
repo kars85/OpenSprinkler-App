@@ -8,6 +8,7 @@
     "opensprinkler-app-intake"
   ],
   "verification_commands": [
+    "python3 -m unittest discover -s scripts -p 'test_agent_workflow.py'",
     "npm run lint",
     "npm run typecheck",
     "npm run test:contract",
@@ -16,13 +17,14 @@
   ],
   "verification_note": "Coordinate controller API changes with Firmware and Weather. Live watering and production publishing require task-specific authorization.",
   "ci_workflows": [
-    ".github/workflows/test.yml",
+    ".github/workflows/agent-workflow.yml",
+    ".github/workflows/app-store-connect.yml",
     ".github/workflows/companion-image.yml",
     ".github/workflows/firebase-hosting-next.yml",
-    ".github/workflows/app-store-connect.yml",
-    ".github/workflows/tag-version.yml",
+    ".github/workflows/firebase-hosting.yml",
     ".github/workflows/google-play.yml",
-    ".github/workflows/firebase-hosting.yml"
+    ".github/workflows/tag-version.yml",
+    ".github/workflows/test.yml"
   ],
   "setup_issue": "https://github.com/kars85/OpenSprinkler-App/issues/42"
 }
