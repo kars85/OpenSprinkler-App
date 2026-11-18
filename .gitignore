@@ -103,3 +103,8 @@ demo/dist/
 !/.agents/skills/opensprinkler-app-intake
 !/.claude/skills/opensprinkler-app-intake
 !/scripts/test_agent_workflow.py
+
+# Machine-local agent credentials and generated Python state
+.claude/settings.local.json
+.claude/agent-memory/
+__pycache__/
