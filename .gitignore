@@ -72,3 +72,34 @@ demo/dist/
 *.db
 *.db-*
 /data/
+
+# Local agent runtime and credentials
+.empirica/
+.abc-state/
+.env
+.env.local
+.env.*.local
+
+# Discoverable project-owned workflow files
+!/.agent-workflow.json
+!/.claude/
+!/.claude/commands/
+!/.claude/commands/abc.md
+!/.claude/commands/intake.md
+!/.claude/skills/
+!/.agents/
+!/.agents/skills/
+!/skills/
+!/scripts/
+!/scripts/agent-workflow.py
+!/docs/
+!/docs/agent-workflow.md
+!/skills/opensprinkler-app-abc/
+!/skills/opensprinkler-app-abc/SKILL.md
+!/.agents/skills/opensprinkler-app-abc
+!/.claude/skills/opensprinkler-app-abc
+!/skills/opensprinkler-app-intake/
+!/skills/opensprinkler-app-intake/SKILL.md
+!/.agents/skills/opensprinkler-app-intake
+!/.claude/skills/opensprinkler-app-intake
+!/scripts/test_agent_workflow.py
